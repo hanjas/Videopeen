@@ -321,9 +321,15 @@ export default function DashboardPage() {
             {/* Modal Content */}
             <div className="p-6">
               {modalError && (
-                <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                  {modalError}
-                  <button onClick={() => setModalError("")} className="ml-2 text-red-300 hover:text-white">✕</button>
+                <div className="mb-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="text-red-400 font-medium mb-1">Upload failed</div>
+                      <div className="text-red-400/80 text-sm">{modalError}</div>
+                      <div className="text-red-400/60 text-xs mt-2">Click "Generate Video" to retry the upload.</div>
+                    </div>
+                    <button onClick={() => setModalError("")} className="text-red-300 hover:text-white ml-3">✕</button>
+                  </div>
                 </div>
               )}
 
@@ -370,33 +376,72 @@ export default function DashboardPage() {
 
               {/* File List */}
               {files.length > 0 && (
-                <div className="bg-[#0a0a0a] rounded-xl border border-white/5 p-4 mb-6 space-y-2">
-                  {files.map((f, i) => (
-                    <div key={i} className="py-2 px-3 rounded-lg bg-white/5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className="text-lg">🎥</span>
-                          <span className="text-sm text-white">{f.file.name}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-gray-500">{formatSize(f.file.size)}</span>
-                          {f.uploaded && <span className="text-xs text-green-400">✓</span>}
-                          {f.error && <span className="text-xs text-red-400">✕</span>}
-                          {!generating && (
-                            <button onClick={() => removeFile(i)} className="text-xs text-gray-600 hover:text-red-400">✕</button>
-                          )}
-                        </div>
+                <div className="bg-[#0a0a0a] rounded-xl border border-white/5 p-4 mb-6">
+                  {/* Overall Upload Status */}
+                  {generating && (
+                    <div className="mb-3 pb-3 border-b border-white/5">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400 font-medium">
+                          Uploading {files.filter(f => f.uploaded).length} / {files.length} files...
+                        </span>
+                        <span className="text-accent font-semibold">
+                          {Math.round((files.filter(f => f.uploaded).length / files.length) * 100)}%
+                        </span>
                       </div>
-                      {generating && !f.uploaded && !f.error && (
-                        <div className="mt-2 h-1 bg-white/5 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-accent rounded-full transition-all duration-300"
-                            style={{ width: `${f.progress * 100}%` }}
-                          />
-                        </div>
-                      )}
                     </div>
-                  ))}
+                  )}
+                  
+                  {/* Individual Files */}
+                  <div className="space-y-3">
+                    {files.map((f, i) => (
+                      <div key={i} className="py-2 px-3 rounded-lg bg-white/5 hover:bg-white/[0.07] transition-all duration-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <span className="text-lg flex-shrink-0">🎥</span>
+                            <span className="text-sm text-white truncate">{f.file.name}</span>
+                          </div>
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <span className="text-xs text-gray-500">{formatSize(f.file.size)}</span>
+                            {f.uploaded && <span className="text-xs text-green-400 font-bold">✓</span>}
+                            {!generating && (
+                              <button onClick={() => removeFile(i)} className="text-xs text-gray-600 hover:text-red-400 transition-colors">✕</button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Progress Bar */}
+                        {generating && !f.uploaded && !f.error && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-gray-500">Uploading...</span>
+                              <span className="text-accent font-semibold">{Math.round(f.progress * 100)}%</span>
+                            </div>
+                            <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-accent to-orange-400 rounded-full transition-all duration-300 ease-out"
+                                style={{ width: `${f.progress * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Error State */}
+                        {f.error && (
+                          <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 px-2 py-1.5 rounded mt-2">
+                            <span>✕</span>
+                            <span className="font-medium">{f.error}</span>
+                          </div>
+                        )}
+                        
+                        {/* Success State */}
+                        {f.uploaded && (
+                          <div className="text-xs text-green-400 mt-1">
+                            ✓ Upload complete
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

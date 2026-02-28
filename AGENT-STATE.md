@@ -1,8 +1,8 @@
 # Videopeen — Agent State Tracker
 
-**Last Updated:** 2026-02-28 14:55 GST
+**Last Updated:** 2026-02-28 14:45 GST
 **Current Phase:** Phase 1 — Ship-Blocker Fixes
-**Current Task:** Task 002 - Audio Preservation (Phase A DONE)
+**Current Task:** Task 004 - Upload Progress Bar (COMPLETE)
 
 ---
 
@@ -10,12 +10,13 @@
 
 | Task | Agent | Status | Started | Notes |
 |------|-------|--------|---------|-------|
-| 002 | subagent:7bc0b7cf | PHASE A COMPLETE | 2026-02-28 14:34 | Audio preservation - all code done, needs testing |
+| 004 | subagent:84d9e6fe | ✅ COMPLETE | 2026-02-28 14:43 | Upload progress bar - all code done, needs testing |
 
 ## Recently Completed
 
 | Task | Completed | Agent | Notes |
 |------|-----------|-------|-------|
+| **004 Upload Progress** | **2026-02-28 14:45** | **subagent:84d9e6fe** | **✅ CODE COMPLETE - Enhanced upload UX with progress bars** |
 | **002 Audio (Phase A)** | **2026-02-28 14:57** | **subagent:7bc0b7cf** | **✅ CODE COMPLETE - See TASK-002-PHASE-A-SUMMARY.md & TASK-002-VERIFICATION.md** |
 | **001 Vertical Export** | **2026-02-28 14:50** | **subagent:299becde** | **✅ COMPLETE - All code + docs ready for testing** |
 | Expert Review | 2026-02-28 | subagent | Full review in AGENT-REVIEW.md |
@@ -24,10 +25,9 @@
 
 ## Next Up (Priority Order)
 
-1. **Task 002: Audio Preservation** — 2 weeks, CRITICAL (NEXT)
+1. **Task 002: Audio Preservation** — 2 weeks, CRITICAL (Phase A done, Phase B next)
 2. **Task 003: Auto-Captions** — 1 week, CRITICAL
-3. **Task 004: Upload Progress Bar** — 1 day, quick polish
-4. **Re-export Different Format** — 2-3 hours, nice-to-have (see FUTURE-TODO-RE-EXPORT.md)
+3. **Re-export Different Format** — 2-3 hours, nice-to-have (see FUTURE-TODO-RE-EXPORT.md)
 
 ## Blockers
 
