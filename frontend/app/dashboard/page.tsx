@@ -39,6 +39,8 @@ export default function DashboardPage() {
   const [duration, setDuration] = useState("60s");
   const [style, setStyle] = useState("Fast-paced");
   const [aspectRatio, setAspectRatio] = useState("16:9");
+  const [transitionType, setTransitionType] = useState("fade");
+  const [transitionDuration, setTransitionDuration] = useState(0.5);
   const [generating, setGenerating] = useState(false);
   const [modalError, setModalError] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -70,6 +72,8 @@ export default function DashboardPage() {
     setDuration("60s");
     setStyle("Fast-paced");
     setAspectRatio("16:9");
+    setTransitionType("fade");
+    setTransitionDuration(0.5);
     setModalError("");
   };
 
@@ -115,6 +119,8 @@ export default function DashboardPage() {
         output_duration: durationSeconds,
         instructions: style,
         aspect_ratio: aspectRatio,
+        transition_type: transitionType,
+        transition_duration: transitionDuration,
       });
 
       // 2. Upload files
@@ -478,6 +484,56 @@ export default function DashboardPage() {
                     {aspectRatio === "16:9" && "🖥 Landscape format for YouTube, traditional videos"}
                   </p>
                 </div>
+                
+                {/* Transition Type Selector */}
+                <div>
+                  <label className="text-sm text-gray-400 block mb-2">Transition Style</label>
+                  <div className="flex gap-2">
+                    {[
+                      { value: "none", label: "None", icon: "⚡" },
+                      { value: "fade", label: "Fade", icon: "🌫️" },
+                      { value: "wiperight", label: "Wipe", icon: "➡️" },
+                      { value: "slideright", label: "Slide", icon: "📱" },
+                      { value: "smoothleft", label: "Smooth", icon: "✨" },
+                    ].map((trans) => (
+                      <button
+                        key={trans.value}
+                        onClick={() => setTransitionType(trans.value)}
+                        disabled={generating}
+                        className={`flex-1 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          transitionType === trans.value ? "bg-accent text-white" : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                        } disabled:opacity-50 flex flex-col items-center gap-1`}
+                        title={trans.label}
+                      >
+                        <span className="text-lg">{trans.icon}</span>
+                        <span className="text-xs">{trans.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Transition Duration Slider */}
+                {transitionType !== "none" && (
+                  <div>
+                    <label className="text-sm text-gray-400 block mb-2">
+                      Transition Duration: {transitionDuration.toFixed(1)}s
+                    </label>
+                    <input
+                      type="range"
+                      min="0.3"
+                      max="1.0"
+                      step="0.1"
+                      value={transitionDuration}
+                      onChange={(e) => setTransitionDuration(parseFloat(e.target.value))}
+                      disabled={generating}
+                      className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-accent disabled:opacity-50"
+                    />
+                    <div className="flex justify-between text-xs text-gray-600 mt-1">
+                      <span>0.3s (Quick)</span>
+                      <span>1.0s (Slow)</span>
+                    </div>
+                  </div>
+                )}
                 
                 <div>
                   <label className="text-sm text-gray-400 block mb-2">Target Duration</label>

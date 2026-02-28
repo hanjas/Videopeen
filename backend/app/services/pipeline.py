@@ -24,6 +24,7 @@ from app.services.video_processor import extract_dense_frames, DenseFrameResult
 from app.services.video_analyzer import detect_actions_for_video, create_edit_plan
 from app.services.video_stitcher import stitch_clips_v2
 from app.services.proxy_renderer import pre_render_proxy_clips, fast_concat_proxies
+from app.services.thumbnail import get_best_thumbnail_path
 from app.websocket import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -417,6 +418,36 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
 
         logger.info("Edit plan saved: %d clips in timeline, %d in pool",
                      len(resolved_clips), len(clip_pool))
+
+        # ------------------------------------------------------------------ #
+        # Step 4.4: Auto-select best thumbnail
+        # ------------------------------------------------------------------ #
+        await _update_project(db, project_id, ProjectStatus.SELECTING, 81,
+                              "Selecting best thumbnail...")
+
+        thumbnails_dir = os.path.join(settings.output_dir, "thumbnails")
+        os.makedirs(thumbnails_dir, exist_ok=True)
+        
+        # Combine resolved clips + pool for thumbnail selection
+        all_clips_for_thumbnails = resolved_clips + clip_pool
+        
+        best_thumbnail_path = await asyncio.to_thread(
+            get_best_thumbnail_path,
+            clips=all_clips_for_thumbnails,
+            output_dir=thumbnails_dir,
+            project_id=project_id,
+        )
+        
+        if best_thumbnail_path:
+            # Save thumbnail path to project
+            thumbnail_filename = os.path.basename(best_thumbnail_path)
+            await db.projects.update_one(
+                {"_id": project_id},
+                {"$set": {"thumbnail_path": f"/outputs/thumbnails/{thumbnail_filename}"}},
+            )
+            logger.info("Best thumbnail saved: %s", best_thumbnail_path)
+        else:
+            logger.warning("Failed to generate thumbnail for project %s", project_id)
 
         # ------------------------------------------------------------------ #
         # Step 4.5: Pre-render proxy clips (LEGO blocks)

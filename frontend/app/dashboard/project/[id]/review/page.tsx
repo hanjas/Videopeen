@@ -90,6 +90,52 @@ export default function ReviewPage() {
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
+  // Format AI notes into structured sections
+  const formatAINotes = (notes: string) => {
+    if (!notes) return null;
+    
+    // Try to detect and format sections
+    const sections: { title: string; content: string }[] = [];
+    
+    // Common patterns in AI notes
+    const patterns = [
+      { regex: /This is (?:a |an )?([^.]+)\./i, title: "Recipe" },
+      { regex: /Edit flow[s]?:\s*([^.]+(?:→[^.]+)*)/i, title: "Flow" },
+      { regex: /Key moment[s]?:\s*([^.]+)/i, title: "Key Moments" },
+      { regex: /Duration[^:]*:\s*([^.]+)/i, title: "Duration" },
+      { regex: /(\d+)\s*clips?/i, title: "Clips" },
+    ];
+    
+    let remainingNotes = notes;
+    
+    patterns.forEach(({ regex, title }) => {
+      const match = remainingNotes.match(regex);
+      if (match) {
+        sections.push({ title, content: match[1] || match[0] });
+        remainingNotes = remainingNotes.replace(match[0], "").trim();
+      }
+    });
+    
+    // If no patterns matched, just return the original notes
+    if (sections.length === 0) {
+      return <span className="text-gray-400">{notes}</span>;
+    }
+    
+    return (
+      <div className="space-y-2">
+        {sections.map((section, idx) => (
+          <div key={idx}>
+            <span className="text-accent font-medium">{section.title}:</span>{" "}
+            <span className="text-gray-400">{section.content}</span>
+          </div>
+        ))}
+        {remainingNotes && (
+          <div className="text-gray-500 text-xs mt-1">{remainingNotes}</div>
+        )}
+      </div>
+    );
+  };
+
   // ---- Drag & Drop ---- //
   const handleDragStart = (idx: number) => {
     setDragIdx(idx);
@@ -205,6 +251,19 @@ export default function ReviewPage() {
 
   const durationPct = targetDuration > 0 ? Math.min((totalDuration / targetDuration) * 100, 150) : 0;
   const durationOk = totalDuration >= targetDuration - 10 && totalDuration <= targetDuration + 10;
+  
+  // More nuanced duration status: green (good), amber (slightly over), red (too much over)
+  const getDurationStatus = () => {
+    if (totalDuration <= targetDuration + 5) {
+      return { color: "bg-green-500", text: "text-green-400", icon: "✓", message: "" };
+    } else if (totalDuration <= targetDuration + 10) {
+      return { color: "bg-yellow-500", text: "text-yellow-400", icon: "⚠", message: " (slightly over)" };
+    } else {
+      return { color: "bg-red-500", text: "text-red-400", icon: "✕", message: " (too long)" };
+    }
+  };
+  
+  const durationStatus = getDurationStatus();
 
   return (
     <div className="h-full flex flex-col">
@@ -244,16 +303,13 @@ export default function ReviewPage() {
       <div className="mb-6 flex-shrink-0">
         <div className="flex items-center justify-between text-xs mb-1">
           <span className="text-gray-400">Duration</span>
-          <span className={durationOk ? "text-green-400" : "text-yellow-400"}>
-            {formatTime(totalDuration)} / {formatTime(targetDuration)}
-            {durationOk ? " ✓" : totalDuration > targetDuration + 10 ? " (too long)" : " (too short)"}
+          <span className={durationStatus.text}>
+            {formatTime(totalDuration)} / {formatTime(targetDuration)} {durationStatus.icon}{durationStatus.message}
           </span>
         </div>
         <div className="h-2 bg-white/5 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-300 ${
-              durationOk ? "bg-green-500" : totalDuration > targetDuration + 10 ? "bg-red-500" : "bg-yellow-500"
-            }`}
+            className={`h-full rounded-full transition-all duration-300 ${durationStatus.color}`}
             style={{ width: `${Math.min(durationPct, 100)}%` }}
           />
         </div>
@@ -286,16 +342,44 @@ export default function ReviewPage() {
 
       {/* Editor notes */}
       {editorNotes && (
-        <div className="mb-4 px-4 py-3 bg-white/5 rounded-lg border border-white/5 text-xs text-gray-400 flex-shrink-0">
-          <span className="text-accent font-medium">AI Notes:</span> {editorNotes}
+        <div className="mb-4 px-4 py-3 bg-yellow-500/5 rounded-lg border border-yellow-500/20 text-xs flex-shrink-0">
+          <div className="font-semibold text-yellow-400 mb-2 flex items-center gap-1">
+            <span>✨</span> AI Analysis
+          </div>
+          {formatAINotes(editorNotes)}
         </div>
       )}
 
       {/* Timeline */}
       <div className="mb-6 flex-shrink-0">
         <h2 className="text-sm font-semibold text-white mb-3">Timeline ({clips.length} clips)</h2>
-        <div className="flex gap-3 overflow-x-auto pb-3">
-          {clips.map((clip, idx) => (
+        <div className="relative">
+          {/* Left scroll arrow */}
+          <button
+            onClick={() => {
+              const container = document.getElementById('review-clip-timeline');
+              if (container) container.scrollBy({ left: -200, behavior: 'smooth' });
+            }}
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl"
+            title="Scroll left"
+          >
+            ←
+          </button>
+          
+          {/* Right scroll arrow */}
+          <button
+            onClick={() => {
+              const container = document.getElementById('review-clip-timeline');
+              if (container) container.scrollBy({ left: 200, behavior: 'smooth' });
+            }}
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl"
+            title="Scroll right"
+          >
+            →
+          </button>
+          
+          <div id="review-clip-timeline" className="flex gap-3 overflow-x-auto pb-3 scroll-smooth">
+            {clips.map((clip, idx) => (
             <div
               key={clip.clip_id}
               draggable
@@ -360,16 +444,17 @@ export default function ReviewPage() {
             </div>
           ))}
 
-          {/* Add from pool button */}
-          {clipPool.length > 0 && (
-            <button
-              onClick={() => setShowPool(!showPool)}
-              className="flex-shrink-0 w-44 bg-[#141414] rounded-xl border border-dashed border-white/10 hover:border-accent/50 flex flex-col items-center justify-center text-gray-500 hover:text-accent transition-all duration-200"
-            >
-              <span className="text-2xl mb-1">+</span>
-              <span className="text-xs">{clipPool.length} more clips</span>
-            </button>
-          )}
+            {/* Add from pool button */}
+            {clipPool.length > 0 && (
+              <button
+                onClick={() => setShowPool(!showPool)}
+                className="flex-shrink-0 w-44 bg-[#141414] rounded-xl border border-dashed border-white/10 hover:border-accent/50 flex flex-col items-center justify-center text-gray-500 hover:text-accent transition-all duration-200"
+              >
+                <span className="text-2xl mb-1">+</span>
+                <span className="text-xs">{clipPool.length} more clips</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

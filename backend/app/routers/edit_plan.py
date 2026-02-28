@@ -25,6 +25,7 @@ from app.services.proxy_renderer import (
     identify_new_clips,
 )
 from app.services.text_overlay import auto_generate_overlays_from_recipe
+from app.services.thumbnail import generate_thumbnails_from_clips
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -438,6 +439,65 @@ async def auto_generate_text_overlays(
         "overlays": overlays_data,
         "count": len(overlays_data),
         "recipe_steps_count": len(recipe_steps),
+    }
+
+
+@router.get("/thumbnails")
+async def get_thumbnails(project_id: str, request: Request):
+    """Get top 3 thumbnail images for the project.
+    
+    Returns thumbnail URLs based on highest visual quality clips.
+    Generates thumbnails on-demand if not already created.
+    """
+    db = _db(request)
+    
+    # Get edit plan
+    plan = await db.edit_plans.find_one({"project_id": project_id})
+    if not plan:
+        raise HTTPException(404, "No edit plan found")
+    
+    # Combine timeline clips + clip pool for thumbnail selection
+    timeline_clips = plan.get("timeline", {}).get("clips", [])
+    clip_pool = plan.get("clip_pool", [])
+    all_clips = timeline_clips + clip_pool
+    
+    if not all_clips:
+        raise HTTPException(404, "No clips available for thumbnail generation")
+    
+    # Generate thumbnails directory
+    thumbnails_dir = os.path.join(settings.output_dir, "thumbnails")
+    os.makedirs(thumbnails_dir, exist_ok=True)
+    
+    # Generate top 3 thumbnails
+    thumbnails = await asyncio.to_thread(
+        generate_thumbnails_from_clips,
+        clips=all_clips,
+        output_dir=thumbnails_dir,
+        project_id=project_id,
+        top_n=3,
+    )
+    
+    if not thumbnails:
+        raise HTTPException(500, "Failed to generate thumbnails")
+    
+    # Convert paths to URLs
+    thumbnail_urls = []
+    for thumb in thumbnails:
+        filename = os.path.basename(thumb["path"])
+        thumbnail_urls.append({
+            "rank": thumb["rank"],
+            "url": f"/outputs/thumbnails/{filename}",
+            "timestamp": thumb["timestamp"],
+            "visual_quality": thumb["visual_quality"],
+            "description": thumb["description"],
+            "source_video": thumb["source_video"],
+        })
+    
+    logger.info("Returning %d thumbnails for project %s", len(thumbnail_urls), project_id)
+    
+    return {
+        "thumbnails": thumbnail_urls,
+        "count": len(thumbnail_urls),
     }
 
 

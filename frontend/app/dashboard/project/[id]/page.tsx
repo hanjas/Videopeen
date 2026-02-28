@@ -54,6 +54,20 @@ export default function ProjectPage() {
   const [videoKey, setVideoKey] = useState(0); // Force video reload
   const [selectedExportFormat, setSelectedExportFormat] = useState<string | null>(null); // For re-export
   
+  // Text overlay state
+  const [overlays, setOverlays] = useState<api.TextOverlay[]>([]);
+  const [overlayModalOpen, setOverlayModalOpen] = useState(false);
+  const [editingOverlay, setEditingOverlay] = useState<api.TextOverlay | null>(null);
+  const [editingOverlayIndex, setEditingOverlayIndex] = useState<number | null>(null);
+  const [overlayText, setOverlayText] = useState("");
+  const [overlayStartTime, setOverlayStartTime] = useState(0);
+  const [overlayEndTime, setOverlayEndTime] = useState(5);
+  const [overlayPosition, setOverlayPosition] = useState("bottom-center");
+  const [overlayStyle, setOverlayStyle] = useState("bold-white");
+  const [overlayFontSize, setOverlayFontSize] = useState(48);
+  const [savingOverlays, setSavingOverlays] = useState(false);
+  const [autoGenerating, setAutoGenerating] = useState(false);
+  
   const wsRef = useRef<WebSocket | null>(null);
   const { toast } = useToast();
 
@@ -108,6 +122,22 @@ export default function ProjectPage() {
   useEffect(() => {
     fetchProject();
   }, [fetchProject]);
+  
+  // Load text overlays
+  useEffect(() => {
+    if (!id || project?.status !== "completed") return;
+    
+    async function loadOverlays() {
+      try {
+        const result = await api.getOverlays(id);
+        setOverlays(result.overlays);
+      } catch (err) {
+        console.error("Failed to load overlays:", err);
+      }
+    }
+    
+    loadOverlays();
+  }, [id, project?.status]);
 
   // Load conversation history
   useEffect(() => {
@@ -306,6 +336,112 @@ export default function ProjectPage() {
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
+  
+  // Text overlay functions
+  const openOverlayModal = (overlay?: api.TextOverlay, index?: number) => {
+    if (overlay && index !== undefined) {
+      setEditingOverlay(overlay);
+      setEditingOverlayIndex(index);
+      setOverlayText(overlay.text);
+      setOverlayStartTime(overlay.start_time);
+      setOverlayEndTime(overlay.end_time);
+      setOverlayPosition(overlay.position);
+      setOverlayStyle(overlay.style);
+      setOverlayFontSize(overlay.font_size);
+    } else {
+      setEditingOverlay(null);
+      setEditingOverlayIndex(null);
+      setOverlayText("");
+      setOverlayStartTime(0);
+      setOverlayEndTime(5);
+      setOverlayPosition("bottom-center");
+      setOverlayStyle("bold-white");
+      setOverlayFontSize(48);
+    }
+    setOverlayModalOpen(true);
+  };
+  
+  const closeOverlayModal = () => {
+    setOverlayModalOpen(false);
+    setEditingOverlay(null);
+    setEditingOverlayIndex(null);
+  };
+  
+  const handleSaveOverlay = async () => {
+    if (!overlayText.trim()) {
+      toast("error", "Text is required");
+      return;
+    }
+    
+    if (overlayEndTime <= overlayStartTime) {
+      toast("error", "End time must be greater than start time");
+      return;
+    }
+    
+    const newOverlay: api.TextOverlay = {
+      text: overlayText.trim(),
+      start_time: overlayStartTime,
+      end_time: overlayEndTime,
+      position: overlayPosition,
+      style: overlayStyle,
+      font_size: overlayFontSize,
+    };
+    
+    let updatedOverlays: api.TextOverlay[];
+    
+    if (editingOverlayIndex !== null) {
+      // Update existing overlay
+      updatedOverlays = [...overlays];
+      updatedOverlays[editingOverlayIndex] = newOverlay;
+    } else {
+      // Add new overlay
+      updatedOverlays = [...overlays, newOverlay];
+    }
+    
+    setSavingOverlays(true);
+    try {
+      await api.updateOverlays(id, updatedOverlays);
+      setOverlays(updatedOverlays);
+      closeOverlayModal();
+      toast("success", editingOverlayIndex !== null ? "Overlay updated" : "Overlay added");
+    } catch (e: unknown) {
+      toast("error", e instanceof Error ? e.message : "Failed to save overlay");
+    } finally {
+      setSavingOverlays(false);
+    }
+  };
+  
+  const handleDeleteOverlay = async (index: number) => {
+    if (!confirm("Delete this text overlay?")) return;
+    
+    const updatedOverlays = overlays.filter((_, i) => i !== index);
+    
+    setSavingOverlays(true);
+    try {
+      await api.updateOverlays(id, updatedOverlays);
+      setOverlays(updatedOverlays);
+      toast("success", "Overlay deleted");
+    } catch (e: unknown) {
+      toast("error", e instanceof Error ? e.message : "Failed to delete overlay");
+    } finally {
+      setSavingOverlays(false);
+    }
+  };
+  
+  const handleAutoGenerateOverlays = async () => {
+    if (!confirm("Auto-generate overlays from recipe steps? This will replace existing overlays.")) return;
+    
+    setAutoGenerating(true);
+    try {
+      const result = await api.autoGenerateOverlays(id, overlayStyle);
+      setOverlays(result.overlays);
+      toast("success", `Generated ${result.count} overlays from recipe steps`);
+    } catch (e: unknown) {
+      toast("error", e instanceof Error ? e.message : "Failed to auto-generate overlays");
+    } finally {
+      setAutoGenerating(false);
+    }
+  };
 
   const formatDate = (d: string) => {
     try {
@@ -407,61 +543,11 @@ export default function ProjectPage() {
             />
           </div>
 
-          {/* Export Format Selector */}
-          <div className="max-w-md mx-auto mb-4">
-            <label className="text-xs text-gray-500 block mb-2 text-center">Export Format</label>
-            <div className="flex gap-2 justify-center">
-              {[
-                { value: "9:16", label: "9:16", icon: "📱", desc: "Vertical" },
-                { value: "1:1", label: "1:1", icon: "⬜", desc: "Square" },
-                { value: "16:9", label: "16:9", icon: "🖥", desc: "Landscape" },
-              ].map((format) => {
-                const isCurrentFormat = project?.aspect_ratio === format.value;
-                const isSelected = selectedExportFormat === format.value;
-                return (
-                  <button
-                    key={format.value}
-                    onClick={() => setSelectedExportFormat(isSelected ? null : format.value)}
-                    disabled={hdRendering}
-                    className={`px-4 py-2.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2 ${
-                      isSelected 
-                        ? "bg-accent text-white" 
-                        : isCurrentFormat
-                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                        : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
-                    } disabled:opacity-50`}
-                    title={isCurrentFormat ? `${format.desc} (Original)` : format.desc}
-                  >
-                    <span>{format.icon}</span>
-                    <span>{format.label}</span>
-                    {isCurrentFormat && <span className="text-[9px]">✓</span>}
-                  </button>
-                );
-              })}
-            </div>
-            {selectedExportFormat && selectedExportFormat !== project?.aspect_ratio && (
-              <p className="text-xs text-orange-400 mt-2 text-center">
-                ⚠️ Re-exporting in {selectedExportFormat} format (not implemented yet - coming soon!)
-              </p>
-            )}
-          </div>
-
-          {/* Primary Action: Export */}
-          <div className="text-center mb-6">
-            <button
-              onClick={handleDownload}
-              className="bg-accent hover:bg-accent-hover text-white px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/30"
-            >
-              ⬇️ Export Video
-            </button>
-          </div>
-
           {/* Conversational Edit Section */}
           <div className="max-w-2xl mx-auto mb-6">
             <div className="bg-surface border border-white/5 rounded-xl p-6">
               <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                💬 Adjust Your Edit
-                <span className="text-xs text-gray-500 font-normal">(optional)</span>
+                💬 Tell AI What to Change
               </h3>
 
               {/* Conversation History */}
@@ -520,24 +606,25 @@ export default function ProjectPage() {
                 </div>
               )}
 
-              {/* Undo/Redo Buttons */}
-              <div className="flex gap-2 mb-3">
+              {/* Undo/Redo Toolbar - Compact */}
+              <div className="flex gap-2 mb-3 items-center">
                 <button
                   onClick={handleUndo}
                   disabled={refining}
-                  className="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Undo last edit"
                 >
-                  <span>↶</span> Undo
+                  ↶
                 </button>
                 <button
                   onClick={handleRedo}
                   disabled={refining}
-                  className="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Redo next edit"
                 >
-                  <span>↷</span> Redo
+                  ↷
                 </button>
+                <span className="text-xs text-gray-500 ml-1">Edit history</span>
               </div>
 
               {/* Input Form */}
@@ -572,6 +659,79 @@ export default function ProjectPage() {
               >
                 Advanced Edit (Manual)
               </Link>
+            </div>
+          </div>
+
+          {/* Text Overlay Section */}
+          <div className="max-w-2xl mx-auto mb-6">
+            <div className="bg-surface border border-white/5 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  📝 Text Overlays
+                  <span className="text-xs text-gray-500 font-normal">({overlays.length})</span>
+                </h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAutoGenerateOverlays}
+                    disabled={autoGenerating || savingOverlays}
+                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-xs font-medium transition-all duration-200 disabled:opacity-50"
+                  >
+                    {autoGenerating ? "⏳" : "✨"} Auto-generate
+                  </button>
+                  <button
+                    onClick={() => openOverlayModal()}
+                    disabled={savingOverlays}
+                    className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-lg text-xs font-medium transition-all duration-200 disabled:opacity-50"
+                  >
+                    + Add Text
+                  </button>
+                </div>
+              </div>
+
+              {/* Overlay List */}
+              {overlays.length > 0 ? (
+                <div className="space-y-2">
+                  {overlays.map((overlay, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-[#111] rounded-lg p-3 flex items-start justify-between gap-3 hover:bg-[#151515] transition-all"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white font-medium truncate mb-1">{overlay.text}</p>
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span>⏱ {formatTime(overlay.start_time)} - {formatTime(overlay.end_time)}</span>
+                          <span>•</span>
+                          <span>📍 {overlay.position}</span>
+                          <span>•</span>
+                          <span>🎨 {overlay.style}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => openOverlayModal(overlay, idx)}
+                          disabled={savingOverlays}
+                          className="px-2 py-1 text-xs text-gray-400 hover:text-white transition-all disabled:opacity-50"
+                          title="Edit"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDeleteOverlay(idx)}
+                          disabled={savingOverlays}
+                          className="px-2 py-1 text-xs text-gray-400 hover:text-red-400 transition-all disabled:opacity-50"
+                          title="Delete"
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  No text overlays yet. Click "Add Text" or "Auto-generate" to create overlays.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -618,28 +778,288 @@ export default function ProjectPage() {
       {decisions.length > 0 && (
         <div className="mb-4 min-w-0">
           <h2 className="text-base font-semibold text-white mb-4">Clip Timeline</h2>
-          <div className="flex gap-3 overflow-x-auto pb-3 max-w-full">
-            {decisions
-              .sort((a, b) => a.sequence_order - b.sequence_order)
-              .map((clip) => (
-                <div
-                  key={clip.id}
-                  className="flex-shrink-0 w-44 bg-surface rounded-xl border border-white/5 hover:border-accent/30 transition-all duration-200 overflow-hidden group cursor-pointer"
-                >
-                  <div className="aspect-video bg-[#141414] flex items-center justify-center text-2xl group-hover:bg-[#1a1a1a] transition-all duration-200">
-                    🎞
-                  </div>
-                  <div className="p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-accent font-semibold">Clip {clip.sequence_order + 1}</span>
-                      <span className="text-xs text-gray-500">
-                        {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
-                      </span>
+          <div className="relative">
+            {/* Left scroll arrow */}
+            <button
+              onClick={() => {
+                const container = document.getElementById('editor-clip-timeline');
+                if (container) container.scrollBy({ left: -200, behavior: 'smooth' });
+              }}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl"
+              title="Scroll left"
+            >
+              ←
+            </button>
+            
+            {/* Right scroll arrow */}
+            <button
+              onClick={() => {
+                const container = document.getElementById('editor-clip-timeline');
+                if (container) container.scrollBy({ left: 200, behavior: 'smooth' });
+              }}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl"
+              title="Scroll right"
+            >
+              →
+            </button>
+            
+            <div id="editor-clip-timeline" className="flex gap-3 overflow-x-auto pb-3 max-w-full scroll-smooth">
+              {decisions
+                .sort((a, b) => a.sequence_order - b.sequence_order)
+                .map((clip) => (
+                  <div
+                    key={clip.id}
+                    className="flex-shrink-0 w-44 bg-surface rounded-xl border border-white/5 hover:border-accent/30 transition-all duration-200 overflow-hidden group cursor-pointer"
+                  >
+                    <div className="aspect-video bg-[#141414] flex items-center justify-center relative group-hover:bg-[#1a1a1a] transition-all duration-200">
+                      {/* Try to load thumbnail, fallback to icon */}
+                      <img
+                        src={api.getClipThumbnailUrl(id, clip.id)}
+                        alt={clip.reason || "Clip"}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        onError={(e) => {
+                          // Hide image and show fallback icon on error
+                          e.currentTarget.style.display = 'none';
+                          const fallback = e.currentTarget.nextElementSibling;
+                          if (fallback) (fallback as HTMLElement).style.display = 'block';
+                        }}
+                      />
+                      <span className="text-2xl absolute" style={{ display: 'none' }}>🎞</span>
                     </div>
-                    <p className="text-xs text-gray-300 truncate">{clip.reason || clip.filename || "—"}</p>
+                    <div className="p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-accent font-semibold">Clip {clip.sequence_order + 1}</span>
+                        <span className="text-xs text-gray-500">
+                          {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-300 truncate">{clip.reason || clip.filename || "—"}</p>
+                    </div>
                   </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Section - Moved to bottom after all editing tools */}
+      {project.status === "completed" && project.output_path && (
+        <div className="max-w-2xl mx-auto mt-8 mb-6">
+          <div className="bg-surface border border-white/5 rounded-xl p-6">
+            <h3 className="text-sm font-semibold text-white mb-4 text-center">Ready to Export</h3>
+            
+            {/* Export Format Selector */}
+            <div className="mb-4">
+              <label className="text-xs text-gray-500 block mb-2 text-center">Export Format</label>
+              <div className="flex gap-2 justify-center">
+                {[
+                  { value: "9:16", label: "9:16", icon: "📱", desc: "Vertical" },
+                  { value: "1:1", label: "1:1", icon: "⬜", desc: "Square" },
+                  { value: "16:9", label: "16:9", icon: "🖥", desc: "Landscape" },
+                ].map((format) => {
+                  const isCurrentFormat = project?.aspect_ratio === format.value;
+                  const isSelected = selectedExportFormat === format.value;
+                  return (
+                    <button
+                      key={format.value}
+                      onClick={() => setSelectedExportFormat(isSelected ? null : format.value)}
+                      disabled={hdRendering}
+                      className={`px-4 py-2.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2 ${
+                        isSelected 
+                          ? "bg-accent text-white" 
+                          : isCurrentFormat
+                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                          : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                      } disabled:opacity-50`}
+                      title={isCurrentFormat ? `${format.desc} (Original)` : format.desc}
+                    >
+                      <span>{format.icon}</span>
+                      <span>{format.label}</span>
+                      {isCurrentFormat && <span className="text-[9px]">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedExportFormat && selectedExportFormat !== project?.aspect_ratio && (
+                <p className="text-xs text-orange-400 mt-2 text-center">
+                  ⚠️ Re-exporting in {selectedExportFormat} format (not implemented yet - coming soon!)
+                </p>
+              )}
+            </div>
+
+            {/* Primary Action: Export */}
+            <div className="text-center">
+              <button
+                onClick={handleDownload}
+                className="bg-accent hover:bg-accent-hover text-white px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/30"
+              >
+                ⬇️ Export Video
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Text Overlay Editor Modal */}
+      {overlayModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+          onClick={closeOverlayModal}
+        >
+          <div
+            className="bg-[#111] border border-white/10 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-[#111] border-b border-white/10 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white">
+                {editingOverlay ? "Edit Text Overlay" : "Add Text Overlay"}
+              </h2>
+              <button
+                onClick={closeOverlayModal}
+                disabled={savingOverlays}
+                className="text-gray-500 hover:text-white transition-all duration-200 disabled:opacity-50"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-6">
+              {/* Text Input */}
+              <div>
+                <label className="text-sm text-gray-400 block mb-2">Text</label>
+                <textarea
+                  value={overlayText}
+                  onChange={(e) => setOverlayText(e.target.value)}
+                  placeholder="Enter text to display..."
+                  rows={3}
+                  disabled={savingOverlays}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-accent/50 transition-all duration-200 disabled:opacity-50 resize-none"
+                />
+              </div>
+
+              {/* Time Inputs */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-gray-400 block mb-2">Start Time (seconds)</label>
+                  <input
+                    type="number"
+                    value={overlayStartTime}
+                    onChange={(e) => setOverlayStartTime(parseFloat(e.target.value) || 0)}
+                    min={0}
+                    step={0.1}
+                    disabled={savingOverlays}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-accent/50 transition-all duration-200 disabled:opacity-50"
+                  />
                 </div>
-              ))}
+                <div>
+                  <label className="text-sm text-gray-400 block mb-2">End Time (seconds)</label>
+                  <input
+                    type="number"
+                    value={overlayEndTime}
+                    onChange={(e) => setOverlayEndTime(parseFloat(e.target.value) || 0)}
+                    min={0}
+                    step={0.1}
+                    disabled={savingOverlays}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-accent/50 transition-all duration-200 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              {/* Style Picker */}
+              <div>
+                <label className="text-sm text-gray-400 block mb-2">Style</label>
+                <div className="flex gap-2">
+                  {[
+                    { value: "bold-white", label: "Bold White", desc: "White text with black outline" },
+                    { value: "subtitle-bar", label: "Subtitle Bar", desc: "White text on black background" },
+                    { value: "minimal", label: "Minimal", desc: "Small text with subtle shadow" },
+                  ].map((style) => (
+                    <button
+                      key={style.value}
+                      onClick={() => setOverlayStyle(style.value)}
+                      disabled={savingOverlays}
+                      className={`flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        overlayStyle === style.value
+                          ? "bg-accent text-white"
+                          : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                      } disabled:opacity-50`}
+                      title={style.desc}
+                    >
+                      {style.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Position Picker */}
+              <div>
+                <label className="text-sm text-gray-400 block mb-2">Position</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: "top-left", label: "Top Left", icon: "↖️" },
+                    { value: "top-center", label: "Top Center", icon: "⬆️" },
+                    { value: "bottom-center", label: "Bottom Center", icon: "⬇️" },
+                    { value: "center", label: "Center", icon: "⏺" },
+                  ].map((pos) => (
+                    <button
+                      key={pos.value}
+                      onClick={() => setOverlayPosition(pos.value)}
+                      disabled={savingOverlays}
+                      className={`px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2 ${
+                        overlayPosition === pos.value
+                          ? "bg-accent text-white"
+                          : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                      } disabled:opacity-50`}
+                    >
+                      <span>{pos.icon}</span>
+                      <span>{pos.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Font Size */}
+              <div>
+                <label className="text-sm text-gray-400 block mb-2">
+                  Font Size: {overlayFontSize}px
+                </label>
+                <input
+                  type="range"
+                  min="24"
+                  max="72"
+                  step="4"
+                  value={overlayFontSize}
+                  onChange={(e) => setOverlayFontSize(parseInt(e.target.value))}
+                  disabled={savingOverlays}
+                  className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-accent disabled:opacity-50"
+                />
+                <div className="flex justify-between text-xs text-gray-600 mt-1">
+                  <span>24px (Small)</span>
+                  <span>72px (Large)</span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-3 pt-4 border-t border-white/10">
+                <button
+                  onClick={handleSaveOverlay}
+                  disabled={savingOverlays || !overlayText.trim()}
+                  className="bg-accent hover:bg-accent-hover text-white px-8 py-3 rounded-xl font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingOverlays ? "⏳ Saving..." : editingOverlay ? "💾 Update" : "➕ Add"}
+                </button>
+                <button
+                  onClick={closeOverlayModal}
+                  disabled={savingOverlays}
+                  className="text-sm text-gray-500 hover:text-white transition-all duration-200 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

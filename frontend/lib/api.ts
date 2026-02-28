@@ -8,12 +8,23 @@ export interface Project {
   instructions?: string;
   output_duration?: number;
   aspect_ratio?: string;  // "16:9", "9:16", "1:1"
+  transition_type?: string;  // "none", "fade", "wiperight", "slideright", "smoothleft"
+  transition_duration?: number;  // 0.3-1.0 seconds
   status: "created" | "uploading" | "processing" | "analyzing" | "selecting" | "review" | "stitching" | "completed" | "error";
   progress: number;
   current_step?: string;
   output_path?: string;
   created_at: string;
   updated_at?: string;
+}
+
+export interface TextOverlay {
+  text: string;
+  start_time: number;
+  end_time: number;
+  position: string;  // "top-left", "top-center", "bottom-center", "center"
+  style: string;  // "bold-white", "subtitle-bar", "minimal"
+  font_size: number;
 }
 
 export interface VideoClip {
@@ -112,6 +123,8 @@ export const api = {
     instructions?: string;
     output_duration?: number;
     aspect_ratio?: string;
+    transition_type?: string;
+    transition_duration?: number;
   }) =>
     apiFetch<Project>("/api/projects", {
       method: "POST",
@@ -229,4 +242,30 @@ export const api = {
     };
     return ws;
   },
+
+  // Text overlay endpoints
+  getOverlays: (projectId: string) =>
+    apiFetch<{ overlays: TextOverlay[]; count: number }>(
+      `/api/projects/${projectId}/edit-plan/overlays`
+    ),
+
+  updateOverlays: (projectId: string, overlays: TextOverlay[]) =>
+    apiFetch<{ success: boolean; overlays: TextOverlay[]; count: number }>(
+      `/api/projects/${projectId}/edit-plan/overlays`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overlays }),
+      }
+    ),
+
+  autoGenerateOverlays: (projectId: string, style: string = "bold-white") =>
+    apiFetch<{ success: boolean; overlays: TextOverlay[]; count: number }>(
+      `/api/projects/${projectId}/edit-plan/overlays/auto-generate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ style }),
+      }
+    ),
 };
