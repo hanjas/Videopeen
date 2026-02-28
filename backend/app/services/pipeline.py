@@ -491,8 +491,19 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
         output_filename = f"{project_id}_final.mp4"
         output_path = os.path.join(settings.output_dir, output_filename)
 
-        # Render the video with aspect ratio
-        await asyncio.to_thread(stitch_clips_v2, stitch_entries, output_path, aspect_ratio)
+        # Get transition settings from project
+        transition_type = project.get("transition_type", "fade")
+        transition_duration = project.get("transition_duration", 0.5)
+        
+        # Render the video with aspect ratio and transitions
+        await asyncio.to_thread(
+            stitch_clips_v2, 
+            stitch_entries, 
+            output_path, 
+            aspect_ratio,
+            transition_type,
+            transition_duration,
+        )
 
         # Mark edit plan as completed
         await db.edit_plans.update_one(

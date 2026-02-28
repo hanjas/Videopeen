@@ -85,8 +85,10 @@ def stitch_clips_v2(
     clip_entries: list[dict],
     output_path: str,
     aspect_ratio: str = "16:9",
+    transition_type: str = "fade",
+    transition_duration: float = 0.5,
 ) -> str:
-    """Stitch clips with speed ramps using ffmpeg filter_complex.
+    """Stitch clips with speed ramps and transitions using ffmpeg filter_complex.
     
     Each entry has:
         - source_path: path to source video
@@ -98,6 +100,8 @@ def stitch_clips_v2(
         clip_entries: List of clip dictionaries with timing and source info
         output_path: Output file path
         aspect_ratio: Target aspect ratio - "16:9" (default), "9:16" (vertical), or "1:1" (square)
+        transition_type: Transition type - "none", "fade", "wiperight", "slideright", "smoothleft"
+        transition_duration: Duration of transition in seconds (0.3-1.0)
     """
     if not clip_entries:
         raise ValueError("No clips to stitch")
@@ -167,14 +171,79 @@ def stitch_clips_v2(
     if not video_concat_inputs:
         raise ValueError("No valid clips after filtering")
 
-    # Concat all video clips
     n = len(video_concat_inputs)
-    video_concat_filter = "".join(video_concat_inputs) + f"concat=n={n}:v=1:a=0[concat]"
-    filter_parts.append(video_concat_filter)
     
-    # Concat all audio clips
-    audio_concat_filter = "".join(audio_concat_inputs) + f"concat=n={n}:v=0:a=1[aconcat]"
-    filter_parts.append(audio_concat_filter)
+    # ---------------------------------------------------------------------------
+    # Video: xfade transitions or simple concat
+    # ---------------------------------------------------------------------------
+    if transition_type != "none" and n > 1:
+        # Use xfade filter chain for transitions
+        # Calculate effective durations for offset computation
+        effective_durations = []
+        for entry in clip_entries:
+            duration = entry["end_time"] - entry["start_time"]
+            speed = entry.get("speed_factor", 1.0)
+            if duration > 0 and speed > 0:
+                effective_durations.append(duration / speed)
+        
+        # Build xfade chain
+        # First clip is the base
+        current_label = f"[v0]"
+        
+        for i in range(1, n):
+            # Calculate offset: cumulative duration of previous clips minus cumulative overlaps
+            # offset = sum(durations[0:i]) - i * transition_duration
+            cumulative_duration = sum(effective_durations[:i])
+            offset = cumulative_duration - (i * transition_duration)
+            
+            # Ensure offset is non-negative
+            if offset < 0:
+                logger.warning("Negative xfade offset %.3f for clip %d, clamping to 0", offset, i)
+                offset = 0
+            
+            next_label = f"[xf{i}]" if i < n - 1 else "[concat]"
+            xfade_filter = f"{current_label}[v{i}]xfade=transition={transition_type}:duration={transition_duration:.3f}:offset={offset:.3f}{next_label}"
+            filter_parts.append(xfade_filter)
+            current_label = next_label
+    else:
+        # No transitions: simple concat
+        video_concat_filter = "".join(video_concat_inputs) + f"concat=n={n}:v=1:a=0[concat]"
+        filter_parts.append(video_concat_filter)
+    
+    # ---------------------------------------------------------------------------
+    # Audio: acrossfade transitions or simple concat
+    # ---------------------------------------------------------------------------
+    if transition_type != "none" and n > 1:
+        # Use acrossfade filter chain for audio transitions
+        # Calculate effective durations for offset computation
+        effective_durations = []
+        for entry in clip_entries:
+            duration = entry["end_time"] - entry["start_time"]
+            speed = entry.get("speed_factor", 1.0)
+            if duration > 0 and speed > 0:
+                effective_durations.append(duration / speed)
+        
+        # Build acrossfade chain
+        current_label = f"[a0]"
+        
+        for i in range(1, n):
+            # Calculate offset: same as video
+            cumulative_duration = sum(effective_durations[:i])
+            offset = cumulative_duration - (i * transition_duration)
+            
+            if offset < 0:
+                logger.warning("Negative acrossfade offset %.3f for clip %d, clamping to 0", offset, i)
+                offset = 0
+            
+            next_label = f"[af{i}]" if i < n - 1 else "[aconcat]"
+            # acrossfade parameters: d=duration, c1=tri (triangular fade curve), c2=tri
+            acrossfade_filter = f"{current_label}[a{i}]acrossfade=d={transition_duration:.3f}:c1=tri:c2=tri{next_label}"
+            filter_parts.append(acrossfade_filter)
+            current_label = next_label
+    else:
+        # No transitions: simple concat
+        audio_concat_filter = "".join(audio_concat_inputs) + f"concat=n={n}:v=0:a=1[aconcat]"
+        filter_parts.append(audio_concat_filter)
     
     # Apply aspect ratio crop/scale AFTER concat
     # Source videos are typically 1080x1920 (portrait) after auto-rotation

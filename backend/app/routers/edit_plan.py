@@ -24,6 +24,7 @@ from app.services.proxy_renderer import (
     get_existing_proxies,
     identify_new_clips,
 )
+from app.services.text_overlay import auto_generate_overlays_from_recipe
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,26 @@ class ConfirmRequest(BaseModel):
 class RefineRequest(BaseModel):
     """Conversational edit instruction."""
     instruction: str
+
+
+class TextOverlay(BaseModel):
+    """Text overlay configuration."""
+    text: str
+    start_time: float
+    end_time: float
+    position: str = "bottom-center"  # top-left, top-center, bottom-center, center
+    style: str = "bold-white"  # bold-white, subtitle-bar, minimal
+    font_size: int = 48
+
+
+class UpdateOverlaysRequest(BaseModel):
+    """Update text overlays."""
+    overlays: list[TextOverlay]
+
+
+class AutoGenerateOverlaysRequest(BaseModel):
+    """Auto-generate overlays from recipe steps."""
+    style: str = "bold-white"
 
 
 # ---- Endpoints ---- #
@@ -279,6 +300,145 @@ async def get_proxy_preview(project_id: str, request: Request):
         raise HTTPException(404, "Proxy preview not available")
     
     return FileResponse(proxy_path, media_type="video/mp4")
+
+
+# ---- Text Overlay Endpoints ---- #
+
+@router.get("/overlays")
+async def get_text_overlays(project_id: str, request: Request):
+    """Get current text overlays for the project."""
+    db = _db(request)
+    plan = await db.edit_plans.find_one({"project_id": project_id})
+    if not plan:
+        raise HTTPException(404, "No edit plan found")
+    
+    overlays = plan.get("text_overlays", [])
+    return {"overlays": overlays, "count": len(overlays)}
+
+
+@router.post("/overlays")
+async def update_text_overlays(
+    project_id: str,
+    body: UpdateOverlaysRequest,
+    request: Request,
+):
+    """Update text overlays for the project."""
+    db = _db(request)
+    plan = await db.edit_plans.find_one({"project_id": project_id})
+    if not plan:
+        raise HTTPException(404, "No edit plan found")
+    
+    # Convert Pydantic models to dicts
+    overlays_data = [overlay.model_dump() for overlay in body.overlays]
+    
+    # Validate overlay time ranges
+    for overlay in overlays_data:
+        if overlay["end_time"] <= overlay["start_time"]:
+            raise HTTPException(
+                400,
+                f"Invalid time range for overlay '{overlay['text']}': "
+                f"end_time must be greater than start_time"
+            )
+    
+    # Update edit plan with overlays
+    await db.edit_plans.update_one(
+        {"project_id": project_id},
+        {"$set": {"text_overlays": overlays_data}},
+    )
+    
+    logger.info("Updated text overlays for project %s: %d overlays", project_id, len(overlays_data))
+    
+    return {
+        "success": True,
+        "overlays": overlays_data,
+        "count": len(overlays_data),
+    }
+
+
+@router.post("/overlays/auto-generate")
+async def auto_generate_text_overlays(
+    project_id: str,
+    body: AutoGenerateOverlaysRequest,
+    request: Request,
+):
+    """Auto-generate text overlays from recipe steps."""
+    db = _db(request)
+    
+    # Get project and edit plan
+    project = await db.projects.find_one({"_id": project_id})
+    if not project:
+        raise HTTPException(404, "Project not found")
+    
+    plan = await db.edit_plans.find_one({"project_id": project_id})
+    if not plan:
+        raise HTTPException(404, "No edit plan found")
+    
+    # Get recipe steps from project (could be in different fields)
+    recipe_steps = []
+    
+    # Try to extract recipe steps from instructions
+    instructions = project.get("instructions", "")
+    if instructions:
+        # Simple extraction: split by newlines and filter out empty lines
+        recipe_steps = [
+            step.strip()
+            for step in instructions.split("\n")
+            if step.strip() and not step.strip().startswith("#")
+        ]
+    
+    # Fallback: use recipe_details if instructions is empty
+    if not recipe_steps:
+        recipe_details = project.get("recipe_details", "")
+        if recipe_details:
+            recipe_steps = [
+                step.strip()
+                for step in recipe_details.split("\n")
+                if step.strip()
+            ]
+    
+    if not recipe_steps:
+        raise HTTPException(
+            400,
+            "No recipe steps found in project. "
+            "Add recipe steps to project instructions or recipe_details first."
+        )
+    
+    # Get timeline clips
+    timeline_clips = plan.get("timeline", {}).get("clips", [])
+    included_clips = [c for c in timeline_clips if c.get("status") == "included"]
+    
+    if not included_clips:
+        raise HTTPException(400, "No clips in timeline to generate overlays for")
+    
+    # Auto-generate overlays
+    overlays_data = auto_generate_overlays_from_recipe(
+        recipe_steps=recipe_steps,
+        clips=included_clips,
+        style=body.style,
+    )
+    
+    if not overlays_data:
+        raise HTTPException(500, "Failed to generate overlays")
+    
+    # Save to edit plan
+    await db.edit_plans.update_one(
+        {"project_id": project_id},
+        {"$set": {"text_overlays": overlays_data}},
+    )
+    
+    logger.info(
+        "Auto-generated %d text overlays for project %s from %d recipe steps",
+        len(overlays_data),
+        project_id,
+        len(recipe_steps),
+    )
+    
+    return {
+        "success": True,
+        "overlays": overlays_data,
+        "count": len(overlays_data),
+        "recipe_steps_count": len(recipe_steps),
+    }
 
 
 @router.post("/undo")

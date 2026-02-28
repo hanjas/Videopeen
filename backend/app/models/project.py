@@ -85,6 +85,8 @@ class Project(BaseModel):
     output_duration: int = 60  # seconds
     chunk_size: int = 120  # seconds
     aspect_ratio: str = "16:9"  # "16:9", "9:16", "1:1"
+    transition_type: str = "fade"  # "none", "fade", "wiperight", "slideright", "smoothleft"
+    transition_duration: float = 0.5  # seconds (0.3-1.0)
     status: ProjectStatus = ProjectStatus.CREATED
     progress: float = 0.0
     current_step: str = ""
@@ -109,6 +111,8 @@ class ProjectCreate(BaseModel):
     output_duration: int = 60
     chunk_size: int = 120
     aspect_ratio: str = "16:9"  # Default to 16:9 for backward compatibility
+    transition_type: str = "fade"  # Default to fade transitions
+    transition_duration: float = 0.5  # Default 0.5 second transitions
 
 
 class ProjectUpdate(BaseModel):
@@ -119,6 +123,8 @@ class ProjectUpdate(BaseModel):
     output_duration: Optional[int] = None
     chunk_size: Optional[int] = None
     aspect_ratio: Optional[str] = None
+    transition_type: Optional[str] = None
+    transition_duration: Optional[float] = None
 
 
 class ProcessRequest(BaseModel):

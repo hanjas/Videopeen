@@ -11,6 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.config import settings
 from app.models.project import ProjectStatus
 from app.services.video_stitcher import stitch_clips_v2
+from app.services.text_overlay import apply_text_overlays
 from app.websocket import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -59,13 +60,62 @@ async def render_from_edit_plan(db: AsyncIOMotorDatabase, project_id: str) -> No
         if not stitch_entries:
             raise ValueError("No included clips to stitch")
 
-        output_filename = f"{project_id}_final.mp4"
-        output_path = os.path.join(settings.output_dir, output_filename)
-        
-        # Get aspect ratio from project (default to 16:9)
+        # Get aspect ratio and transition settings from project
         aspect_ratio = project.get("aspect_ratio", "16:9")
-
-        await asyncio.to_thread(stitch_clips_v2, stitch_entries, output_path, aspect_ratio)
+        transition_type = project.get("transition_type", "fade")
+        transition_duration = project.get("transition_duration", 0.5)
+        
+        # Check if there are text overlays to apply
+        text_overlays = edit_plan.get("text_overlays", [])
+        
+        if text_overlays:
+            # Render to temp file first, then apply overlays
+            temp_filename = f"{project_id}_no_overlays.mp4"
+            temp_path = os.path.join(settings.output_dir, temp_filename)
+            
+            await asyncio.to_thread(
+                stitch_clips_v2, 
+                stitch_entries, 
+                temp_path, 
+                aspect_ratio,
+                transition_type,
+                transition_duration,
+            )
+            
+            await _update_project(db, project_id, ProjectStatus.STITCHING, 92,
+                                  f"Applying {len(text_overlays)} text overlays...")
+            
+            # Apply text overlays (final output)
+            output_filename = f"{project_id}_final.mp4"
+            output_path = os.path.join(settings.output_dir, output_filename)
+            
+            await asyncio.to_thread(
+                apply_text_overlays,
+                temp_path,
+                output_path,
+                text_overlays,
+                aspect_ratio,
+            )
+            
+            # Clean up temp file
+            try:
+                os.remove(temp_path)
+                logger.info("Cleaned up temp file: %s", temp_path)
+            except Exception as e:
+                logger.warning("Failed to remove temp file %s: %s", temp_path, e)
+        else:
+            # No overlays, render directly to final output
+            output_filename = f"{project_id}_final.mp4"
+            output_path = os.path.join(settings.output_dir, output_filename)
+            
+            await asyncio.to_thread(
+                stitch_clips_v2, 
+                stitch_entries, 
+                output_path, 
+                aspect_ratio,
+                transition_type,
+                transition_duration,
+            )
 
         # Update edit plan status
         await db.edit_plans.update_one(
