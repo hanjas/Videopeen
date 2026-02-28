@@ -7,6 +7,7 @@ export interface Project {
   recipe_details?: string;
   instructions?: string;
   output_duration?: number;
+  aspect_ratio?: string;  // "16:9", "9:16", "1:1"
   status: "created" | "uploading" | "processing" | "analyzing" | "selecting" | "review" | "stitching" | "completed" | "error";
   progress: number;
   current_step?: string;
@@ -110,6 +111,7 @@ export const api = {
     dish_name?: string;
     instructions?: string;
     output_duration?: number;
+    aspect_ratio?: string;
   }) =>
     apiFetch<Project>("/api/projects", {
       method: "POST",

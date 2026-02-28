@@ -709,11 +709,14 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
         # 3. Pre-render only NEW clips (most clips already have proxies!)
         if new_clips_to_render:
             logger.info("Pre-rendering %d new proxy clips", len(new_clips_to_render))
+            # Get aspect ratio from project
+            aspect_ratio = project.get("aspect_ratio", "16:9")
             new_proxy_map = await pre_render_proxy_clips(
                 project_id,
                 new_clips_to_render,
                 proxies_dir,
                 db,
+                aspect_ratio=aspect_ratio,
             )
             # Merge with existing proxies
             existing_proxy_map.update(new_proxy_map)

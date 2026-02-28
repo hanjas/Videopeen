@@ -61,8 +61,11 @@ async def render_from_edit_plan(db: AsyncIOMotorDatabase, project_id: str) -> No
 
         output_filename = f"{project_id}_final.mp4"
         output_path = os.path.join(settings.output_dir, output_filename)
+        
+        # Get aspect ratio from project (default to 16:9)
+        aspect_ratio = project.get("aspect_ratio", "16:9")
 
-        await asyncio.to_thread(stitch_clips_v2, stitch_entries, output_path)
+        await asyncio.to_thread(stitch_clips_v2, stitch_entries, output_path, aspect_ratio)
 
         # Update edit plan status
         await db.edit_plans.update_one(

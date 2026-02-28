@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 def stitch_clips_v2(
     clip_entries: list[dict],
     output_path: str,
+    aspect_ratio: str = "16:9",
 ) -> str:
     """Stitch clips with speed ramps using ffmpeg filter_complex.
     
@@ -22,6 +23,11 @@ def stitch_clips_v2(
         - start_time: float seconds
         - end_time: float seconds
         - speed_factor: float (1.0 = normal, 2.0 = 2x speed, 0.75 = slow-mo)
+    
+    Args:
+        clip_entries: List of clip dictionaries with timing and source info
+        output_path: Output file path
+        aspect_ratio: Target aspect ratio - "16:9" (default), "9:16" (vertical), or "1:1" (square)
     """
     if not clip_entries:
         raise ValueError("No clips to stitch")
@@ -65,8 +71,48 @@ def stitch_clips_v2(
 
     # Concat all clips
     n = len(concat_inputs)
-    concat_filter = "".join(concat_inputs) + f"concat=n={n}:v=1:a=0[outv]"
+    concat_filter = "".join(concat_inputs) + f"concat=n={n}:v=1:a=0[concat]"
     filter_parts.append(concat_filter)
+    
+    # Apply aspect ratio crop/scale AFTER concat
+    # Source videos are typically 1080x1920 (portrait) after auto-rotation
+    # Crop is centered using (iw-crop_w)/2 and (ih-crop_h)/2
+    if aspect_ratio == "9:16":
+        # Vertical (TikTok/Reels/Shorts): 1080x1920
+        # Crop to 9:16 aspect ratio, centered
+        crop_filter = (
+            "[concat]crop="
+            "w='min(iw,ih*9/16)':"  # width: either full width or height*9/16
+            "h='min(ih,iw*16/9)':"  # height: either full height or width*16/9
+            "x='(iw-min(iw,ih*9/16))/2':"  # center horizontally
+            "y='(ih-min(ih,iw*16/9))/2',"  # center vertically
+            "scale=1080:1920[outv]"
+        )
+        filter_parts.append(crop_filter)
+    elif aspect_ratio == "1:1":
+        # Square (Instagram feed): 1080x1080
+        # Crop to square, centered
+        crop_filter = (
+            "[concat]crop="
+            "w='min(iw,ih)':"
+            "h='min(iw,ih)':"
+            "x='(iw-min(iw,ih))/2':"
+            "y='(ih-min(iw,ih))/2',"
+            "scale=1080:1080[outv]"
+        )
+        filter_parts.append(crop_filter)
+    else:
+        # 16:9 (YouTube/default): 1920x1080
+        # Crop to 16:9 aspect ratio, centered
+        crop_filter = (
+            "[concat]crop="
+            "w='min(iw,ih*16/9)':"
+            "h='min(ih,iw*9/16)':"
+            "x='(iw-min(iw,ih*16/9))/2':"
+            "y='(ih-min(ih,iw*9/16))/2',"
+            "scale=1920:1080[outv]"
+        )
+        filter_parts.append(crop_filter)
 
     filter_complex = ";".join(filter_parts)
 

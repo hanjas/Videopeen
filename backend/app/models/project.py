@@ -84,6 +84,7 @@ class Project(BaseModel):
     instructions: str = ""
     output_duration: int = 60  # seconds
     chunk_size: int = 120  # seconds
+    aspect_ratio: str = "16:9"  # "16:9", "9:16", "1:1"
     status: ProjectStatus = ProjectStatus.CREATED
     progress: float = 0.0
     current_step: str = ""
@@ -107,6 +108,7 @@ class ProjectCreate(BaseModel):
     instructions: str = ""
     output_duration: int = 60
     chunk_size: int = 120
+    aspect_ratio: str = "16:9"  # Default to 16:9 for backward compatibility
 
 
 class ProjectUpdate(BaseModel):
@@ -116,6 +118,7 @@ class ProjectUpdate(BaseModel):
     instructions: Optional[str] = None
     output_duration: Optional[int] = None
     chunk_size: Optional[int] = None
+    aspect_ratio: Optional[str] = None
 
 
 class ProcessRequest(BaseModel):

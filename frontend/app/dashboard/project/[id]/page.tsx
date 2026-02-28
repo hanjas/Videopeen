@@ -52,6 +52,7 @@ export default function ProjectPage() {
   const [proxyVideoUrl, setProxyVideoUrl] = useState<string | null>(null);
   const [hdRendering, setHdRendering] = useState(false);
   const [videoKey, setVideoKey] = useState(0); // Force video reload
+  const [selectedExportFormat, setSelectedExportFormat] = useState<string | null>(null); // For re-export
   
   const wsRef = useRef<WebSocket | null>(null);
   const { toast } = useToast();
@@ -404,6 +405,45 @@ export default function ProjectPage() {
               className="w-full rounded-2xl border border-white/5 bg-black"
               style={{ maxHeight: "55vh" }}
             />
+          </div>
+
+          {/* Export Format Selector */}
+          <div className="max-w-md mx-auto mb-4">
+            <label className="text-xs text-gray-500 block mb-2 text-center">Export Format</label>
+            <div className="flex gap-2 justify-center">
+              {[
+                { value: "9:16", label: "9:16", icon: "📱", desc: "Vertical" },
+                { value: "1:1", label: "1:1", icon: "⬜", desc: "Square" },
+                { value: "16:9", label: "16:9", icon: "🖥", desc: "Landscape" },
+              ].map((format) => {
+                const isCurrentFormat = project?.aspect_ratio === format.value;
+                const isSelected = selectedExportFormat === format.value;
+                return (
+                  <button
+                    key={format.value}
+                    onClick={() => setSelectedExportFormat(isSelected ? null : format.value)}
+                    disabled={hdRendering}
+                    className={`px-4 py-2.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2 ${
+                      isSelected 
+                        ? "bg-accent text-white" 
+                        : isCurrentFormat
+                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                        : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                    } disabled:opacity-50`}
+                    title={isCurrentFormat ? `${format.desc} (Original)` : format.desc}
+                  >
+                    <span>{format.icon}</span>
+                    <span>{format.label}</span>
+                    {isCurrentFormat && <span className="text-[9px]">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedExportFormat && selectedExportFormat !== project?.aspect_ratio && (
+              <p className="text-xs text-orange-400 mt-2 text-center">
+                ⚠️ Re-exporting in {selectedExportFormat} format (not implemented yet - coming soon!)
+              </p>
+            )}
           </div>
 
           {/* Primary Action: Export */}

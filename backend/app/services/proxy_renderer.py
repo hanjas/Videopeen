@@ -20,13 +20,14 @@ async def pre_render_proxy_clips(
     clips: list[dict[str, Any]],
     proxies_dir: str,
     db=None,
+    aspect_ratio: str = "16:9",
 ) -> dict[str, str]:
     """Pre-render each clip as individual 480p mp4 files (LEGO blocks).
     
     For each clip:
     - Extract the clip segment from source video
     - Encode at 480p, fast preset, crf 28
-    - Apply speed factor
+    - Apply speed factor and aspect ratio
     - Save to: proxies_dir/{clip_id}.mp4
     
     Args:
@@ -34,6 +35,7 @@ async def pre_render_proxy_clips(
         clips: List of clip dicts with source_path, start_time, end_time, speed_factor, clip_id
         proxies_dir: Directory to save proxy files
         db: Optional MongoDB database connection to update clip records
+        aspect_ratio: Target aspect ratio - "16:9", "9:16", or "1:1"
     
     Returns:
         Dict mapping clip_id -> proxy_path
@@ -87,10 +89,45 @@ async def pre_render_proxy_clips(
             # For speed=2.0, setpts=0.5*PTS (half the PTS = 2x speed)
             # For speed=0.75, setpts=1.333*PTS (slower)
             
-            if speed_factor != 1.0 and speed_factor > 0:
-                vf = f"scale=-2:480,setpts={1.0/speed_factor:.6f}*PTS,format=yuv420p"
+            # Build video filter chain: crop (centered) -> scale -> speed -> format
+            if aspect_ratio == "9:16":
+                # Vertical: crop to 9:16, scale to 270x480 (proxy)
+                vf = (
+                    "crop="
+                    "w='min(iw,ih*9/16)':"
+                    "h='min(ih,iw*16/9)':"
+                    "x='(iw-min(iw,ih*9/16))/2':"
+                    "y='(ih-min(ih,iw*16/9))/2',"
+                    "scale=270:480"
+                )
+            elif aspect_ratio == "1:1":
+                # Square: crop to 1:1, scale to 480x480 (proxy)
+                vf = (
+                    "crop="
+                    "w='min(iw,ih)':"
+                    "h='min(iw,ih)':"
+                    "x='(iw-min(iw,ih))/2':"
+                    "y='(ih-min(iw,ih))/2',"
+                    "scale=480:480"
+                )
             else:
-                vf = "scale=-2:480,format=yuv420p"
+                # 16:9: crop to 16:9, scale to 854x480 (proxy)
+                vf = (
+                    "crop="
+                    "w='min(iw,ih*16/9)':"
+                    "h='min(ih,iw*9/16)':"
+                    "x='(iw-min(iw,ih*16/9))/2':"
+                    "y='(ih-min(ih,iw*9/16))/2',"
+                    "scale=854:480"
+                )
+            
+            
+            # Add speed adjustment if needed
+            if speed_factor != 1.0 and speed_factor > 0:
+                vf += f",setpts={1.0/speed_factor:.6f}*PTS"
+            
+            # Final format
+            vf += ",format=yuv420p"
             
             cmd = [
                 "ffmpeg", "-y",

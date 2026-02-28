@@ -38,6 +38,7 @@ export default function DashboardPage() {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [duration, setDuration] = useState("60s");
   const [style, setStyle] = useState("Fast-paced");
+  const [aspectRatio, setAspectRatio] = useState("16:9");
   const [generating, setGenerating] = useState(false);
   const [modalError, setModalError] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -68,6 +69,7 @@ export default function DashboardPage() {
     setFiles([]);
     setDuration("60s");
     setStyle("Fast-paced");
+    setAspectRatio("16:9");
     setModalError("");
   };
 
@@ -112,6 +114,7 @@ export default function DashboardPage() {
         name: name.trim() || undefined,
         output_duration: durationSeconds,
         instructions: style,
+        aspect_ratio: aspectRatio,
       });
 
       // 2. Upload files
@@ -400,6 +403,37 @@ export default function DashboardPage() {
               {/* Settings */}
               <div className="bg-[#0a0a0a] rounded-xl border border-white/5 p-6 mb-6 space-y-6">
                 <h3 className="text-base font-semibold text-white">Edit Settings</h3>
+                
+                {/* Aspect Ratio Selector */}
+                <div>
+                  <label className="text-sm text-gray-400 block mb-2">Format / Aspect Ratio</label>
+                  <div className="flex gap-2">
+                    {[
+                      { value: "9:16", label: "9:16", icon: "📱", desc: "Vertical (TikTok/Reels)" },
+                      { value: "1:1", label: "1:1", icon: "⬜", desc: "Square (Instagram)" },
+                      { value: "16:9", label: "16:9", icon: "🖥", desc: "Landscape (YouTube)" },
+                    ].map((format) => (
+                      <button
+                        key={format.value}
+                        onClick={() => setAspectRatio(format.value)}
+                        disabled={generating}
+                        className={`flex-1 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          aspectRatio === format.value ? "bg-accent text-white" : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                        } disabled:opacity-50 flex flex-col items-center gap-1`}
+                        title={format.desc}
+                      >
+                        <span className="text-xl">{format.icon}</span>
+                        <span className="text-xs">{format.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    {aspectRatio === "9:16" && "📱 Vertical format for TikTok, Instagram Reels, YouTube Shorts"}
+                    {aspectRatio === "1:1" && "⬜ Square format for Instagram feed posts"}
+                    {aspectRatio === "16:9" && "🖥 Landscape format for YouTube, traditional videos"}
+                  </p>
+                </div>
+                
                 <div>
                   <label className="text-sm text-gray-400 block mb-2">Target Duration</label>
                   <div className="flex gap-2">

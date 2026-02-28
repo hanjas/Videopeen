@@ -428,11 +428,15 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
         all_clips_for_proxy = resolved_clips + clip_pool
         proxies_dir = os.path.join(settings.upload_dir, project_id, "proxies")
         
+        # Get aspect ratio from project (default to 16:9)
+        aspect_ratio = project.get("aspect_ratio", "16:9")
+        
         proxy_map = await pre_render_proxy_clips(
             project_id,
             all_clips_for_proxy,
             proxies_dir,
             db,
+            aspect_ratio=aspect_ratio,
         )
         
         logger.info("Pre-rendered %d proxy clips for project %s", len(proxy_map), project_id)
@@ -487,8 +491,8 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
         output_filename = f"{project_id}_final.mp4"
         output_path = os.path.join(settings.output_dir, output_filename)
 
-        # Render the video
-        await asyncio.to_thread(stitch_clips_v2, stitch_entries, output_path)
+        # Render the video with aspect ratio
+        await asyncio.to_thread(stitch_clips_v2, stitch_entries, output_path, aspect_ratio)
 
         # Mark edit plan as completed
         await db.edit_plans.update_one(

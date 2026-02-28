@@ -2,7 +2,7 @@
 
 **Priority:** 🔴 CRITICAL
 **Effort:** 3 days
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ IMPLEMENTATION COMPLETE (Testing Pending)
 **Depends on:** Nothing
 **Assigned to:** —
 
@@ -94,15 +94,15 @@ Add aspect_ratio to Project type and relevant API calls
 
 ## Checklist
 
-- [ ] Backend: Add aspect_ratio param to `stitch_clips_v2()`
-- [ ] Backend: Add crop filter logic for 9:16 and 1:1
-- [ ] Backend: Smart center crop (not just geometric center)
-- [ ] Backend: Update proxy renderer for aspect ratio
-- [ ] Backend: API endpoint accepts aspect_ratio
-- [ ] Backend: Store aspect_ratio in project + edit_plan
-- [ ] Frontend: Aspect ratio selector on project creation
-- [ ] Frontend: Format selector on export/download
-- [ ] Frontend: API types updated
+- [x] Backend: Add aspect_ratio param to `stitch_clips_v2()`
+- [x] Backend: Add crop filter logic for 9:16 and 1:1
+- [x] Backend: Smart center crop (not just geometric center)
+- [x] Backend: Update proxy renderer for aspect ratio
+- [x] Backend: API endpoint accepts aspect_ratio
+- [x] Backend: Store aspect_ratio in project + edit_plan
+- [x] Frontend: Aspect ratio selector on project creation
+- [x] Frontend: Format selector on export/download
+- [x] Frontend: API types updated
 - [ ] Test: 9:16 export from landscape source
 - [ ] Test: 9:16 export from portrait source
 - [ ] Test: 1:1 export
