@@ -15,6 +15,40 @@ logger = logging.getLogger(__name__)
 MAX_CONCURRENT_RENDERS = 3
 
 
+def _build_atempo_chain_proxy(speed: float) -> str:
+    """Build atempo filter chain for speed adjustments in proxy clips.
+    
+    atempo accepts 0.5-100.0, but quality degrades >2.0.
+    For better quality, chain multiple atempo filters.
+    
+    Args:
+        speed: Speed factor (1.0 = normal, 2.0 = double speed, 0.5 = half speed)
+    
+    Returns:
+        Comma-prefixed atempo filter string (e.g., ",atempo=2.0,atempo=2.0")
+    """
+    if speed <= 0 or speed == 1.0:
+        return ""
+    
+    atempo_filters = []
+    remaining_speed = speed
+    
+    # Chain atempo filters to stay within optimal range
+    while remaining_speed > 2.0:
+        atempo_filters.append("atempo=2.0")
+        remaining_speed /= 2.0
+    
+    while remaining_speed < 0.5:
+        atempo_filters.append("atempo=0.5")
+        remaining_speed /= 0.5
+    
+    # Apply the remaining speed adjustment
+    if abs(remaining_speed - 1.0) > 0.01:
+        atempo_filters.append(f"atempo={remaining_speed:.6f}")
+    
+    return "," + ",".join(atempo_filters) if atempo_filters else ""
+
+
 async def pre_render_proxy_clips(
     project_id: str,
     clips: list[dict[str, Any]],
@@ -129,6 +163,15 @@ async def pre_render_proxy_clips(
             # Final format
             vf += ",format=yuv420p"
             
+            # Build audio filter if speed adjustment needed
+            af = ""
+            if speed_factor != 1.0 and speed_factor > 0:
+                # Apply atempo for speed adjustment (same logic as video_stitcher)
+                af = _build_atempo_chain_proxy(speed_factor)
+                # Remove leading comma for -af parameter
+                if af.startswith(","):
+                    af = af[1:]
+            
             cmd = [
                 "ffmpeg", "-y",
                 "-ss", f"{start_time:.3f}",
@@ -138,10 +181,17 @@ async def pre_render_proxy_clips(
                 "-c:v", "h264_videotoolbox",
                 "-b:v", "2M",
                 "-tag:v", "avc1",
-                "-an",  # No audio
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-ar", "44100",
                 "-movflags", "+faststart",
-                output_path,
             ]
+            
+            # Add audio filter if needed
+            if af:
+                cmd.extend(["-af", af])
+            
+            cmd.append(output_path)
             
             logger.debug("Rendering proxy for clip %s: %.1fs @ %.2fx speed", 
                         clip_id, duration, speed_factor)

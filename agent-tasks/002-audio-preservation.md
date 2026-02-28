@@ -117,19 +117,22 @@ Hard audio cuts between clips sound jarring. Add short crossfade:
 ## Checklist
 
 ### Phase A: Basic Audio
-- [ ] Remove `-an` from video_stitcher.py
-- [ ] Add audio trim filter matching video trim
-- [ ] Add atempo filter matching speed ramps
-- [ ] Handle atempo chaining for speed >2.0 or <0.5
-- [ ] Audio normalization (loudnorm)
+- [x] Remove `-an` from video_stitcher.py
+- [x] Add audio trim filter matching video trim
+- [x] Add atempo filter matching speed ramps
+- [x] Handle atempo chaining for speed >2.0 or <0.5
+- [x] Audio normalization (loudnorm)
+- [x] Handle videos without audio track (no crash)
+- [x] Handle different sample rates between sources (aresample=44100)
+- [x] Remove `-an` from proxy_renderer.py
 - [ ] Test: basic video with audio → output has sound
 - [ ] Test: speed ramp 2x → audio plays at 2x correctly
 
 ### Phase B: Edge Cases + Polish
-- [ ] Handle videos without audio track (no crash)
-- [ ] Handle different sample rates between sources
+- [x] Handle videos without audio track (no crash) — DONE IN PHASE A
+- [x] Handle different sample rates between sources — DONE IN PHASE A
 - [ ] Add audio crossfade between clips (100ms)
-- [ ] Remove `-an` from proxy_renderer.py
+- [x] Remove `-an` from proxy_renderer.py — DONE IN PHASE A
 - [ ] Test: multiple source videos → smooth audio transitions
 
 ### Phase C: Background Music

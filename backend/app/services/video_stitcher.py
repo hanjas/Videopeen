@@ -11,6 +11,76 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def _detect_audio_streams(source_paths: list[str]) -> dict[str, bool]:
+    """Detect which source videos have audio streams.
+    
+    Returns dict mapping source_path -> has_audio (bool).
+    Uses ffprobe to check for audio streams.
+    """
+    has_audio = {}
+    
+    for path in source_paths:
+        try:
+            # Use ffprobe to detect audio stream
+            cmd = [
+                "ffprobe", "-v", "error",
+                "-select_streams", "a:0",
+                "-show_entries", "stream=codec_type",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                path,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            
+            # If output contains "audio", the file has an audio stream
+            has_audio[path] = "audio" in result.stdout.lower()
+            
+            if not has_audio[path]:
+                logger.info("Source video has no audio track: %s", os.path.basename(path))
+                
+        except Exception as e:
+            logger.warning("Failed to detect audio for %s: %s", path, e)
+            # Assume no audio on error to avoid crashes
+            has_audio[path] = False
+    
+    return has_audio
+
+
+def _build_atempo_chain(speed: float) -> str:
+    """Build atempo filter chain for speed adjustments.
+    
+    atempo accepts 0.5-100.0, but quality degrades >2.0.
+    For better quality, chain multiple atempo filters:
+    - speed=4.0 → atempo=2.0,atempo=2.0
+    - speed=0.25 → atempo=0.5,atempo=0.5
+    
+    Args:
+        speed: Speed factor (1.0 = normal, 2.0 = double speed, 0.5 = half speed)
+    
+    Returns:
+        Comma-prefixed atempo filter string (e.g., ",atempo=2.0,atempo=2.0")
+    """
+    if speed <= 0 or speed == 1.0:
+        return ""
+    
+    atempo_filters = []
+    remaining_speed = speed
+    
+    # Chain atempo filters to stay within optimal range
+    while remaining_speed > 2.0:
+        atempo_filters.append("atempo=2.0")
+        remaining_speed /= 2.0
+    
+    while remaining_speed < 0.5:
+        atempo_filters.append("atempo=0.5")
+        remaining_speed /= 0.5
+    
+    # Apply the remaining speed adjustment
+    if abs(remaining_speed - 1.0) > 0.01:  # Only if significantly different from 1.0
+        atempo_filters.append(f"atempo={remaining_speed:.6f}")
+    
+    return "," + ",".join(atempo_filters) if atempo_filters else ""
+
+
 def stitch_clips_v2(
     clip_entries: list[dict],
     output_path: str,
@@ -41,9 +111,13 @@ def stitch_clips_v2(
     # Deduplicate source paths
     source_paths = list(dict.fromkeys(e["source_path"] for e in clip_entries))
     source_index = {path: i for i, path in enumerate(source_paths)}
+    
+    # Detect which sources have audio streams
+    sources_with_audio = _detect_audio_streams(source_paths)
 
     filter_parts = []
-    concat_inputs = []
+    video_concat_inputs = []
+    audio_concat_inputs = []
 
     for i, entry in enumerate(clip_entries):
         src_idx = source_index[entry["source_path"]]
@@ -56,23 +130,51 @@ def stitch_clips_v2(
             continue
 
         # Trim video and normalize pixel format for consistent concat
-        trim_filter = f"[{src_idx}:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS,setsar=1,format=yuv420p"
+        video_filter = f"[{src_idx}:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS,setsar=1,format=yuv420p"
 
         # Apply speed change if needed
         if speed != 1.0 and speed > 0:
-            trim_filter += f",setpts={1.0/speed:.4f}*PTS"
+            video_filter += f",setpts={1.0/speed:.4f}*PTS"
 
-        trim_filter += f"[v{i}]"
-        filter_parts.append(trim_filter)
-        concat_inputs.append(f"[v{i}]")
+        video_filter += f"[v{i}]"
+        filter_parts.append(video_filter)
+        video_concat_inputs.append(f"[v{i}]")
+        
+        # Audio processing (only if source has audio)
+        if sources_with_audio.get(entry["source_path"], False):
+            audio_filter = f"[{src_idx}:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS"
+            
+            # Apply atempo filter for speed adjustments
+            # atempo range: 0.5-100.0, but quality degrades >2.0
+            # Chain multiple atempo filters for better quality
+            if speed != 1.0 and speed > 0:
+                audio_filter += _build_atempo_chain(speed)
+            
+            # Resample to 44100 Hz for consistent sample rate
+            audio_filter += ",aresample=44100"
+            
+            audio_filter += f"[a{i}]"
+            filter_parts.append(audio_filter)
+            audio_concat_inputs.append(f"[a{i}]")
+        else:
+            # Generate silent audio for clips without audio to maintain sync
+            # Use anullsrc with duration matching the video clip
+            effective_duration = duration / speed if speed > 0 else duration
+            audio_filter = f"anullsrc=channel_layout=stereo:sample_rate=44100,atrim=duration={effective_duration:.3f}[a{i}]"
+            filter_parts.append(audio_filter)
+            audio_concat_inputs.append(f"[a{i}]")
 
-    if not concat_inputs:
+    if not video_concat_inputs:
         raise ValueError("No valid clips after filtering")
 
-    # Concat all clips
-    n = len(concat_inputs)
-    concat_filter = "".join(concat_inputs) + f"concat=n={n}:v=1:a=0[concat]"
-    filter_parts.append(concat_filter)
+    # Concat all video clips
+    n = len(video_concat_inputs)
+    video_concat_filter = "".join(video_concat_inputs) + f"concat=n={n}:v=1:a=0[concat]"
+    filter_parts.append(video_concat_filter)
+    
+    # Concat all audio clips
+    audio_concat_filter = "".join(audio_concat_inputs) + f"concat=n={n}:v=0:a=1[aconcat]"
+    filter_parts.append(audio_concat_filter)
     
     # Apply aspect ratio crop/scale AFTER concat
     # Source videos are typically 1080x1920 (portrait) after auto-rotation
@@ -113,6 +215,10 @@ def stitch_clips_v2(
             "scale=1920:1080[outv]"
         )
         filter_parts.append(crop_filter)
+    
+    # Audio normalization (loudnorm) - streaming standard (-14 LUFS)
+    audio_norm_filter = "[aconcat]loudnorm=I=-14:TP=-1:LRA=11[outa]"
+    filter_parts.append(audio_norm_filter)
 
     filter_complex = ";".join(filter_parts)
 
@@ -124,11 +230,14 @@ def stitch_clips_v2(
     cmd.extend([
         "-filter_complex", filter_complex,
         "-map", "[outv]",
+        "-map", "[outa]",
         "-c:v", "h264_videotoolbox",
         "-b:v", "12M",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-ar", "44100",
         "-tag:v", "avc1",
         "-movflags", "+faststart",
-        "-an",  # No audio for now
         output_path,
     ])
 
@@ -163,7 +272,7 @@ def _stitch_fallback(clip_entries: list[dict], output_path: str) -> str:
                 "-i", entry["source_path"],
                 "-t", f"{duration:.3f}",
                 "-c:v", "h264_videotoolbox", "-b:v", "8M", "-tag:v", "avc1",
-                "-an",
+                "-c:a", "aac", "-b:a", "192k",
                 "-reset_timestamps", "1",
                 trimmed,
             ]

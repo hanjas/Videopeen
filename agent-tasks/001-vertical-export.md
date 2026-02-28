@@ -132,3 +132,56 @@ ffmpeg -i input.mp4 -vf "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920" outpu
 ## Decision Log
 - **Why crop, not letterbox?** Letterbox (black bars) looks amateur on social media. Crop is what pros do.
 - **Why center crop, not smart AI crop?** Start simple, add AI crop later (Claude Vision detect food position). Center works 80% of time for cooking (food in center of frame).
+
+---
+
+## Implementation Notes (2026-02-28)
+
+**Implemented by:** subagent:299becde  
+**Files modified:** 9 files (6 backend, 3 frontend)  
+**Implementation time:** ~20 minutes  
+
+### Key Changes
+
+**Backend:**
+1. Added `aspect_ratio` field to Project model (default "16:9")
+2. Updated `stitch_clips_v2()` with centered crop filters for all aspect ratios
+3. Updated `pre_render_proxy_clips()` to render proxies at correct aspect ratio
+4. Pipeline and render services pass aspect_ratio from project to renderers
+5. Edit plan refine endpoint respects aspect_ratio for proxy re-rendering
+
+**Frontend:**
+1. Added visual aspect ratio selector in project creation modal (📱 ⬜ 🖥)
+2. Added export format display on project page (shows current format)
+3. Updated API types to include aspect_ratio field
+
+### Crop Filter Implementation
+
+Used adaptive min() functions to handle both landscape and portrait sources:
+
+```
+9:16: crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)':x='(iw-min(iw,ih*9/16))/2':y='(ih-min(ih,iw*16/9))/2'
+```
+
+This formula:
+- Works for landscape sources (crops width)
+- Works for portrait sources (minimal cropping)
+- Always centers the crop both horizontally and vertically
+
+### Output Resolutions
+- 9:16 vertical: 1080×1920 (proxy: 270×480)
+- 1:1 square: 1080×1080 (proxy: 480×480)
+- 16:9 landscape: 1920×1080 (proxy: 854×480)
+
+### Testing Status
+- ⏳ **Pending:** Real-world testing with actual videos
+- 📄 **Test docs:** See `TESTING-001-VERTICAL-EXPORT.md`
+- ⚡ **Quick test:** See `QUICK-START-TESTING.md`
+
+### Next Steps
+1. Run full test suite
+2. Fix any bugs found
+3. Test with both landscape and portrait sources
+4. Verify proxy system works correctly
+5. Test conversational editing preserves aspect ratio
+6. Mark task complete and move to Task 002
