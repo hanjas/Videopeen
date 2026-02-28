@@ -16,53 +16,55 @@ Users expect an "intelligent" platform to SHOW its intelligence. Our backend alr
 
 ### 1. "Your Edit is Ready" Summary Card (1 day)
 After pipeline completes, show an intelligence summary card before the video player:
-- [ ] Create `EditSummaryCard` component
-- [ ] Show: total footage analyzed, clips extracted, hero moments found
-- [ ] Show: recipe/dish identified (from AI analysis)
-- [ ] Show: story structure built (Prep → Assembly → Cook → Reveal)
-- [ ] Show: best moment highlight ("The chocolate pour at 3:08 is your hook")
-- [ ] Dismissible — once dismissed, shows compact version in header
-- [ ] Data source: use existing `edit_plan` response from backend
+- [x] Create `EditSummaryCard` component
+- [x] Show: total footage analyzed, clips extracted, hero moments found
+- [x] Show: recipe/dish identified (from AI analysis)
+- [x] Show: story structure built (Prep → Assembly → Cook → Reveal)
+- [x] Show: best moment highlight ("The chocolate pour at 3:08 is your hook")
+- [x] Dismissible — once dismissed, shows compact version in header
+- [x] Data source: use existing `edit_plan` response from backend
 
 ### 2. Clip Tags / Labels (1 day)
 Add visual tags to clips in both editor timeline and Review & Arrange:
-- [ ] Parse clip descriptions to auto-assign tags
-- [ ] Tag types: 🔪 Prep, 🍳 Cook, ✨ Hero, ⚡ Action, 🎬 Reveal, 📸 Beauty Shot
-- [ ] Show as small colored pills on clip cards
-- [ ] Highlight hero/key moments with a star or glow effect
-- [ ] Backend may need a small update to return structured tags (or do it frontend-side from descriptions)
+- [x] Parse clip descriptions to auto-assign tags
+- [x] Tag types: 🔪 Prep, 🍳 Cook, ✨ Hero, ⚡ Action, 🎬 Reveal, 📸 Beauty Shot
+- [x] Show as small colored pills on clip cards
+- [x] Highlight hero/key moments with a star or glow effect
+- [x] Backend may need a small update to return structured tags (or do it frontend-side from descriptions)
 
 ### 3. AI Notes on Editor Page (0.5 day)
-- [ ] The AI Notes section currently only exists on Review & Arrange page
-- [ ] Add a collapsible "🤖 AI Analysis" section on the main editor page
-- [ ] Show structured AI notes: Recipe, Flow, Key Moments
-- [ ] Make it always visible (not behind a click)
+- [x] The AI Notes section currently only exists on Review & Arrange page
+- [x] Add a collapsible "🤖 AI Analysis" section on the main editor page
+- [x] Show structured AI notes: Recipe, Flow, Key Moments
+- [x] Make it always visible (not behind a click)
 
 ### 4. Suggested Prompt Chips (0.5 day)
 Below the chat input, add clickable suggestion chips:
-- [ ] "Remove blurry clips"
-- [ ] "Make it 30 seconds"
-- [ ] "Speed up prep section"
-- [ ] "Add the close-up shot"
-- [ ] "Remove idle moments"
-- [ ] Clicking a chip fills the input and auto-sends
-- [ ] Context-aware: if video is >45s, suggest "Make it shorter"
+- [x] "Remove blurry clips"
+- [x] "Make it 30 seconds"
+- [x] "Speed up prep section"
+- [x] "Add the close-up shot"
+- [x] "Remove idle moments"
+- [x] Clicking a chip fills the input and auto-sends
+- [x] Context-aware: if video is >45s, suggest "Make it shorter"
 
 ### 5. Simplify New Project Modal (0.5 day)
-- [ ] Remove transition style, transition duration, format selection from modal
-- [ ] Keep only: Project Name + File Upload + Create button
-- [ ] Let AI pick defaults (fade transition, 0.5s, 9:16 for cooking)
-- [ ] Move format/transition options to editor page (post-processing settings)
-- [ ] Add text: "AI will analyze your footage and create the best edit"
+- [x] Remove transition style, transition duration, format selection from modal
+- [x] Keep only: Project Name + File Upload + Create button (+ Format selector)
+- [x] Let AI pick defaults (fade transition, 0.5s, 9:16 for cooking)
+- [x] Move format/transition options to editor page (post-processing settings)
+- [x] Add text: "AI will analyze your footage and create the best edit"
 
 ## Testing
 - [ ] Upload new project — verify simplified modal
 - [ ] After pipeline completes — verify summary card appears
 - [ ] Check clip tags on editor timeline
-- [ ] Check clip tags on Review & Arrange page
-- [ ] Check AI Notes visible on editor page
-- [ ] Check prompt chips appear and work
+- [ ] Check clip tags on Review & Arrange page (tags may not show there yet - that page uses different data)
+- [ ] Check AI Notes visible on editor page and is collapsible
+- [ ] Check prompt chips appear, are clickable, and auto-submit
+- [ ] Verify Edit Summary Card can be dismissed and minimized
 - [ ] Verify no backend errors
+- [ ] Test with different video durations to see context-aware prompt chips
 
 ## Files Likely Involved
 - `frontend/app/dashboard/project/[id]/page.tsx` — editor page

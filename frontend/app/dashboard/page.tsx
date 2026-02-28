@@ -313,7 +313,7 @@ export default function DashboardPage() {
             <div className="sticky top-0 bg-[#111] border-b border-white/10 px-6 py-4 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-white">New Project</h2>
-                <p className="text-sm text-gray-500 mt-1">Upload your raw footage and configure your edit</p>
+                <p className="text-sm text-gray-500 mt-1">Upload your footage and let AI create an intelligent edit</p>
               </div>
               <button
                 onClick={closeModal}
@@ -451,124 +451,47 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* Settings */}
-              <div className="bg-[#0a0a0a] rounded-xl border border-white/5 p-6 mb-6 space-y-6">
-                <h3 className="text-base font-semibold text-white">Edit Settings</h3>
-                
-                {/* Aspect Ratio Selector */}
-                <div>
-                  <label className="text-sm text-gray-400 block mb-2">Format / Aspect Ratio</label>
-                  <div className="flex gap-2">
-                    {[
-                      { value: "9:16", label: "9:16", icon: "📱", desc: "Vertical (TikTok/Reels)" },
-                      { value: "1:1", label: "1:1", icon: "⬜", desc: "Square (Instagram)" },
-                      { value: "16:9", label: "16:9", icon: "🖥", desc: "Landscape (YouTube)" },
-                    ].map((format) => (
-                      <button
-                        key={format.value}
-                        onClick={() => setAspectRatio(format.value)}
-                        disabled={generating}
-                        className={`flex-1 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          aspectRatio === format.value ? "bg-accent text-white" : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
-                        } disabled:opacity-50 flex flex-col items-center gap-1`}
-                        title={format.desc}
-                      >
-                        <span className="text-xl">{format.icon}</span>
-                        <span className="text-xs">{format.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    {aspectRatio === "9:16" && "📱 Vertical format for TikTok, Instagram Reels, YouTube Shorts"}
-                    {aspectRatio === "1:1" && "⬜ Square format for Instagram feed posts"}
-                    {aspectRatio === "16:9" && "🖥 Landscape format for YouTube, traditional videos"}
-                  </p>
-                </div>
-                
-                {/* Transition Type Selector */}
-                <div>
-                  <label className="text-sm text-gray-400 block mb-2">Transition Style</label>
-                  <div className="flex gap-2">
-                    {[
-                      { value: "none", label: "None", icon: "⚡" },
-                      { value: "fade", label: "Fade", icon: "🌫️" },
-                      { value: "wiperight", label: "Wipe", icon: "➡️" },
-                      { value: "slideright", label: "Slide", icon: "📱" },
-                      { value: "smoothleft", label: "Smooth", icon: "✨" },
-                    ].map((trans) => (
-                      <button
-                        key={trans.value}
-                        onClick={() => setTransitionType(trans.value)}
-                        disabled={generating}
-                        className={`flex-1 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          transitionType === trans.value ? "bg-accent text-white" : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
-                        } disabled:opacity-50 flex flex-col items-center gap-1`}
-                        title={trans.label}
-                      >
-                        <span className="text-lg">{trans.icon}</span>
-                        <span className="text-xs">{trans.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                
-                {/* Transition Duration Slider */}
-                {transitionType !== "none" && (
+              {/* AI Intelligence Note */}
+              <div className="bg-gradient-to-r from-accent/10 to-purple-500/10 border border-accent/20 rounded-xl p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">✨</span>
                   <div>
-                    <label className="text-sm text-gray-400 block mb-2">
-                      Transition Duration: {transitionDuration.toFixed(1)}s
-                    </label>
-                    <input
-                      type="range"
-                      min="0.3"
-                      max="1.0"
-                      step="0.1"
-                      value={transitionDuration}
-                      onChange={(e) => setTransitionDuration(parseFloat(e.target.value))}
-                      disabled={generating}
-                      className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-accent disabled:opacity-50"
-                    />
-                    <div className="flex justify-between text-xs text-gray-600 mt-1">
-                      <span>0.3s (Quick)</span>
-                      <span>1.0s (Slow)</span>
-                    </div>
+                    <h4 className="text-sm font-semibold text-white mb-1">AI Will Analyze Your Footage</h4>
+                    <p className="text-xs text-gray-300">
+                      Our AI will identify key moments, detect actions, build a story structure, and create an intelligent edit optimized for engagement.
+                    </p>
                   </div>
-                )}
+                </div>
+              </div>
+
+              {/* Simplified Settings */}
+              <div className="bg-[#0a0a0a] rounded-xl border border-white/5 p-6 mb-6">
+                <h3 className="text-sm font-semibold text-white mb-4">Output Format</h3>
                 
-                <div>
-                  <label className="text-sm text-gray-400 block mb-2">Target Duration</label>
-                  <div className="flex gap-2">
-                    {["30s", "60s", "90s"].map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => setDuration(d)}
-                        disabled={generating}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          duration === d ? "bg-accent text-white" : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
-                        } disabled:opacity-50`}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
+                {/* Aspect Ratio Selector - Simplified */}
+                <div className="flex gap-2">
+                  {[
+                    { value: "9:16", label: "9:16", icon: "📱", desc: "Vertical" },
+                    { value: "1:1", label: "1:1", icon: "⬜", desc: "Square" },
+                    { value: "16:9", label: "16:9", icon: "🖥", desc: "Landscape" },
+                  ].map((format) => (
+                    <button
+                      key={format.value}
+                      onClick={() => setAspectRatio(format.value)}
+                      disabled={generating}
+                      className={`flex-1 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        aspectRatio === format.value ? "bg-accent text-white" : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                      } disabled:opacity-50 flex flex-col items-center gap-1`}
+                      title={format.desc}
+                    >
+                      <span className="text-xl">{format.icon}</span>
+                      <span className="text-xs">{format.label}</span>
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <label className="text-sm text-gray-400 block mb-2">Style</label>
-                  <div className="flex gap-2">
-                    {["ASMR", "Fast-paced", "Cinematic"].map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => setStyle(s)}
-                        disabled={generating}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          style === s ? "bg-accent text-white" : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
-                        } disabled:opacity-50`}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <p className="text-xs text-gray-500 mt-3 text-center">
+                  AI will use smooth transitions and optimize pacing automatically
+                </p>
               </div>
 
               {/* Actions */}

@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { api, Project, EditDecision } from "@/lib/api";
 import { useToast } from "@/components/Toast";
+import { EditSummaryCard } from "@/components/EditSummaryCard";
 
 const STEPS = [
   { key: "analyzing", label: "Extracting Frames" },
@@ -67,6 +68,12 @@ export default function ProjectPage() {
   const [overlayFontSize, setOverlayFontSize] = useState(48);
   const [savingOverlays, setSavingOverlays] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState(false);
+  
+  // Edit plan / AI intelligence state
+  const [editPlan, setEditPlan] = useState<any>(null);
+  const [editorNotes, setEditorNotes] = useState("");
+  const [timelineClips, setTimelineClips] = useState<any[]>([]);
+  const [showAIAnalysis, setShowAIAnalysis] = useState(true);
   
   const wsRef = useRef<WebSocket | null>(null);
   const { toast } = useToast();
@@ -137,6 +144,24 @@ export default function ProjectPage() {
     }
     
     loadOverlays();
+  }, [id, project?.status]);
+
+  // Load edit plan for AI intelligence data
+  useEffect(() => {
+    if (!id || project?.status !== "completed") return;
+    
+    async function loadEditPlan() {
+      try {
+        const plan = await api.getEditPlan(id);
+        setEditPlan(plan);
+        setEditorNotes(plan.editor_notes || "");
+        setTimelineClips(plan.timeline?.clips || []);
+      } catch (err) {
+        console.error("Failed to load edit plan:", err);
+      }
+    }
+    
+    loadEditPlan();
   }, [id, project?.status]);
 
   // Load conversation history
@@ -335,6 +360,45 @@ export default function ProjectPage() {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  // Get clip tag based on action_type or description
+  const getClipTag = (clip: any): { icon: string; label: string; color: string } | null => {
+    const actionType = clip.action_type || "";
+    const description = (clip.description || "").toLowerCase();
+    const reason = (clip.reason || "").toLowerCase();
+    
+    // Check action_type first
+    if (actionType === "ingredient_add" || description.includes("prep") || description.includes("chop") || description.includes("dice")) {
+      return { icon: "🔪", label: "Prep", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" };
+    }
+    if (actionType === "cooking" || description.includes("cook") || description.includes("fry") || description.includes("sizzl")) {
+      return { icon: "🍳", label: "Cook", color: "bg-orange-500/20 text-orange-400 border-orange-500/30" };
+    }
+    if (actionType === "plating" || description.includes("plat") || description.includes("final") || description.includes("reveal")) {
+      return { icon: "🎬", label: "Reveal", color: "bg-purple-500/20 text-purple-400 border-purple-500/30" };
+    }
+    if (actionType === "mixing" || description.includes("mix") || description.includes("stir") || description.includes("whisk")) {
+      return { icon: "🥄", label: "Mix", color: "bg-green-500/20 text-green-400 border-green-500/30" };
+    }
+    
+    // Check for hero/key moments in description or reason
+    if (description.includes("hero") || description.includes("money shot") || description.includes("cheese pull") || 
+        description.includes("chocolate ooze") || description.includes("drizzle") || reason.includes("key moment")) {
+      return { icon: "✨", label: "Hero", color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" };
+    }
+    
+    // Check for action moments
+    if (clip.shows_action_moment || description.includes("action") || description.includes("flip") || description.includes("pour")) {
+      return { icon: "⚡", label: "Action", color: "bg-red-500/20 text-red-400 border-red-500/30" };
+    }
+    
+    // Check for beauty shots
+    if (description.includes("beauty") || description.includes("close-up") || description.includes("close up") || (clip.visual_quality && clip.visual_quality >= 8)) {
+      return { icon: "📸", label: "Beauty", color: "bg-pink-500/20 text-pink-400 border-pink-500/30" };
+    }
+    
+    return null;
   };
   
   // Text overlay functions
@@ -543,6 +607,49 @@ export default function ProjectPage() {
             />
           </div>
 
+          {/* Edit Summary Card - Intelligence Layer */}
+          {editorNotes && editPlan && (
+            <EditSummaryCard
+              editorNotes={editorNotes}
+              clipCount={timelineClips.length || decisions.length}
+              totalDuration={editPlan.timeline?.total_effective_duration || 0}
+              targetDuration={editPlan.timeline?.target_duration || project.output_duration || 60}
+              recipeDetails={project.recipe_details}
+              dishName={project.dish_name}
+            />
+          )}
+
+          {/* AI Analysis Section */}
+          {editorNotes && (
+            <div className="max-w-2xl mx-auto mb-6">
+              <button
+                onClick={() => setShowAIAnalysis(!showAIAnalysis)}
+                className="w-full bg-yellow-500/5 border border-yellow-500/20 rounded-xl px-4 py-3 text-left hover:bg-yellow-500/10 transition-all duration-200"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🤖</span>
+                    <span className="text-sm font-semibold text-yellow-400">AI Analysis</span>
+                  </div>
+                  <svg
+                    className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${showAIAnalysis ? "rotate-180" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+              
+              {showAIAnalysis && (
+                <div className="mt-2 bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
+                  <div className="text-xs text-gray-300 whitespace-pre-wrap">{editorNotes}</div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Conversational Edit Section */}
           <div className="max-w-2xl mx-auto mb-6">
             <div className="bg-surface border border-white/5 rounded-xl p-6">
@@ -646,9 +753,42 @@ export default function ProjectPage() {
                 </button>
               </form>
 
-              <p className="text-xs text-gray-500 mt-3">
-                Examples: "Make it 30 seconds", "Remove idle moments", "Add the close-up shot"
-              </p>
+              {/* Suggested Prompt Chips */}
+              <div className="mt-3">
+                <p className="text-xs text-gray-400 mb-2">💡 Try these:</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { text: "Make it 30 seconds", condition: (editPlan?.timeline?.total_effective_duration || 0) > 35 },
+                    { text: "Make it shorter", condition: (editPlan?.timeline?.total_effective_duration || 0) > 45 },
+                    { text: "Remove blurry clips", condition: true },
+                    { text: "Speed up prep section", condition: editorNotes.toLowerCase().includes("prep") },
+                    { text: "Add the close-up shot", condition: true },
+                    { text: "Remove idle moments", condition: true },
+                    { text: "Focus on the plating", condition: editorNotes.toLowerCase().includes("plat") },
+                  ]
+                    .filter(chip => chip.condition)
+                    .slice(0, 4)
+                    .map((chip, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setInstruction(chip.text);
+                          // Auto-submit if not already refining
+                          if (!refining && chip.text.trim()) {
+                            setTimeout(() => {
+                              const form = document.querySelector('form');
+                              if (form) form.requestSubmit();
+                            }, 100);
+                          }
+                        }}
+                        disabled={refining}
+                        className="px-3 py-1.5 bg-white/5 hover:bg-accent/20 border border-white/10 hover:border-accent/50 text-gray-300 hover:text-white rounded-lg text-xs transition-all duration-200 disabled:opacity-50"
+                      >
+                        {chip.text}
+                      </button>
+                    ))}
+                </div>
+              </div>
             </div>
 
             {/* Advanced Edit Link */}
@@ -806,38 +946,52 @@ export default function ProjectPage() {
             <div id="editor-clip-timeline" className="flex gap-3 overflow-x-auto pb-3 max-w-full scroll-smooth">
               {decisions
                 .sort((a, b) => a.sequence_order - b.sequence_order)
-                .map((clip) => (
-                  <div
-                    key={clip.id}
-                    className="flex-shrink-0 w-44 bg-surface rounded-xl border border-white/5 hover:border-accent/30 transition-all duration-200 overflow-hidden group cursor-pointer"
-                  >
-                    <div className="aspect-video bg-[#141414] flex items-center justify-center relative group-hover:bg-[#1a1a1a] transition-all duration-200">
-                      {/* Try to load thumbnail, fallback to icon */}
-                      <img
-                        src={api.getClipThumbnailUrl(id, clip.id)}
-                        alt={clip.reason || "Clip"}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                        onError={(e) => {
-                          // Hide image and show fallback icon on error
-                          e.currentTarget.style.display = 'none';
-                          const fallback = e.currentTarget.nextElementSibling;
-                          if (fallback) (fallback as HTMLElement).style.display = 'block';
-                        }}
-                      />
-                      <span className="text-2xl absolute" style={{ display: 'none' }}>🎞</span>
-                    </div>
-                    <div className="p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-accent font-semibold">Clip {clip.sequence_order + 1}</span>
-                        <span className="text-xs text-gray-500">
-                          {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
-                        </span>
+                .map((clip) => {
+                  // Try to find the clip in timeline data for more info
+                  const timelineClip = timelineClips.find(c => c.clip_id === clip.id || c.action_id === clip.action_id);
+                  const clipTag = getClipTag(timelineClip || clip);
+                  
+                  return (
+                    <div
+                      key={clip.id}
+                      className="flex-shrink-0 w-44 bg-surface rounded-xl border border-white/5 hover:border-accent/30 transition-all duration-200 overflow-hidden group cursor-pointer"
+                    >
+                      <div className="aspect-video bg-[#141414] flex items-center justify-center relative group-hover:bg-[#1a1a1a] transition-all duration-200">
+                        {/* Try to load thumbnail, fallback to icon */}
+                        <img
+                          src={api.getClipThumbnailUrl(id, clip.id)}
+                          alt={clip.reason || "Clip"}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          onError={(e) => {
+                            // Hide image and show fallback icon on error
+                            e.currentTarget.style.display = 'none';
+                            const fallback = e.currentTarget.nextElementSibling;
+                            if (fallback) (fallback as HTMLElement).style.display = 'block';
+                          }}
+                        />
+                        <span className="text-2xl absolute" style={{ display: 'none' }}>🎞</span>
+                        
+                        {/* Clip Tag Badge */}
+                        {clipTag && (
+                          <div className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 ${clipTag.color}`}>
+                            <span>{clipTag.icon}</span>
+                            <span>{clipTag.label}</span>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-gray-300 truncate">{clip.reason || clip.filename || "—"}</p>
+                      <div className="p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-accent font-semibold">Clip {clip.sequence_order + 1}</span>
+                          <span className="text-xs text-gray-500">
+                            {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-300 truncate">{clip.reason || clip.filename || "—"}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </div>
         </div>

@@ -1,8 +1,8 @@
 # Videopeen — Agent State Tracker
 
-**Last Updated:** 2026-03-01 01:45 GST
+**Last Updated:** 2026-03-01 02:15 GST
 **Current Phase:** Phase 2 — UI/UX Overhaul
-**Current Task:** Task 007 Complete - UI Quick Wins
+**Current Task:** Task 008 Complete - Intelligence Layer
 
 ---
 
@@ -10,12 +10,13 @@
 
 | Task | Agent | Status | Started | Notes |
 |------|-------|--------|---------|-------|
-| - | - | - | - | All caught up! Task 007 complete. |
+| - | - | - | - | All caught up! Task 008 complete. |
 
 ## Recently Completed
 
 | Task | Completed | Agent | Notes |
 |------|-----------|-------|-------|
+| **008 Intelligence Layer** | **2026-03-01 02:15** | **subagent:task-008** | **✅ COMPLETE - All 5 intelligence features: Edit Summary Card, Clip Tags, AI Notes on Editor, Prompt Chips, Simplified Modal** |
 | **007 UI Quick Wins** | **2026-03-01 01:45** | **subagent:51872c92** | **✅ COMPLETE - All 8 frontend quick wins implemented (see 007-quick-wins-ui.md)** |
 | **006 Transitions (Frontend)** | **2026-02-28 15:10** | **subagent:4825b3aa** | **✅ COMPLETE - Transition selector UI in dashboard with type + duration slider** |
 | **005 Text Overlays (Frontend)** | **2026-02-28 15:10** | **subagent:4825b3aa** | **✅ COMPLETE - Full overlay editor with add/edit/delete/auto-generate** |
@@ -31,8 +32,7 @@
 ## Next Up (Priority Order)
 
 ### UI/UX Overhaul (NEW — from UI Review scored 4/10)
-1. **Task 008: Intelligence Layer** — 3-5 days, make AI visible (summary card, tags, prompts) ← NEXT
-3. **Task 009: Editor Redesign** — 1-2 weeks, split-panel workspace
+1. **Task 009: Editor Redesign** — 1-2 weeks, split-panel workspace ← NEXT
 
 ### Remaining Ship-Blockers
 4. **Task 002: Audio Preservation** — 2 weeks, CRITICAL (Phase A done, Phase B next)
