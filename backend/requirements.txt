@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+motor
+pymongo
+pydantic
+pydantic-settings
+python-multipart
+python-dotenv
+ffmpeg-python
+mlx-vlm
+mlx-lm
+aiofiles
+Pillow

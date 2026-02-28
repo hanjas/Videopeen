@@ -1,0 +1,497 @@
+
+> frontend@1.0.0 dev
+> next dev
+
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3000
+
+ ✓ Starting...
+ ✓ Ready in 1597ms
+ ✓ Compiled / in 313ms (483 modules)
+ GET / 200 in 390ms
+   Reload env: .env.local
+ ✓ Compiled in 96ms (240 modules)
+ ✓ Compiled in 470ms (254 modules)
+ ✓ Compiled in 96ms (254 modules)
+ ✓ Compiled in 27ms (240 modules)
+ ✓ Compiled in 95ms (254 modules)
+[?25h
+
+> frontend@1.0.0 dev
+> next dev
+
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 1565ms
+ ○ Compiling / ...
+ ✓ Compiled / in 1136ms (588 modules)
+ GET / 200 in 1218ms
+ GET / 200 in 19ms
+ ✓ Compiled /api/auth/[...nextauth] in 310ms (521 modules)
+ GET /api/auth/session 200 in 530ms
+ GET /api/auth/session 200 in 4ms
+ ✓ Compiled /middleware in 222ms (174 modules)
+ GET /?callbackUrl=%2Fdashboard 200 in 41ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/providers 200 in 21ms
+ GET /api/auth/csrf 200 in 5ms
+ POST /api/auth/signin/google 200 in 455ms
+ GET /api/auth/callback/google?state=OvP1TR11dROpHSvTjvXscqPt1Fgq71pQqdIc0mzWlQU&code=4%2F0AfrIepDkUs2PF3RUKzL3vO6AnublbGJNXgenrHbu4icPMbyCkU8IIOoAoaKyblQJWMyeSw&scope=email+profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+openid&authuser=0&prompt=consent 302 in 1167ms
+ GET /?callbackUrl=%2Fdashboard 200 in 29ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 4ms
+ ✓ Compiled /dashboard in 224ms (837 modules)
+ ✓ Compiled in 107ms (307 modules)
+ ✓ Compiled /dashboard/new in 196ms (594 modules)
+ GET /dashboard 200 in 39ms
+ ✓ Compiled /api/auth/[...nextauth] in 46ms (534 modules)
+ GET /api/auth/session 200 in 95ms
+ GET /api/auth/session 200 in 3ms
+ ✓ Compiled /dashboard/project/[id] in 201ms (600 modules)
+ ✓ Compiled in 108ms (311 modules)
+ ✓ Compiled in 80ms (311 modules)
+ ✓ Compiled in 144ms (774 modules)
+ ✓ Compiled in 222ms (614 modules)
+ ✓ Compiled /dashboard/settings in 109ms (606 modules)
+ ✓ Compiled in 191ms (620 modules)
+ ✓ Compiled in 148ms (606 modules)
+ ✓ Compiled in 133ms (607 modules)
+ ✓ Compiled in 81ms (607 modules)
+ ✓ Compiled in 120ms (621 modules)
+ ✓ Compiled in 101ms (621 modules)
+ ✓ Compiled in 106ms (621 modules)
+ ✓ Compiled in 122ms (621 modules)
+ GET /dashboard 200 in 50ms
+ ✓ Compiled /api/auth/[...nextauth] in 241ms (542 modules)
+ GET /api/auth/session 200 in 303ms
+ GET /api/auth/session 200 in 4ms
+ GET / 200 in 66ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 4ms
+ GET /api/auth/providers 200 in 4ms
+ GET /api/auth/csrf 200 in 3ms
+ POST /api/auth/signin/google 200 in 456ms
+ GET /api/auth/callback/google?state=tUc1RbsAGQEAl0gTtMhWGtbB3bI7_TDUNyPeoi92xQ4&code=4%2F0AfrIepARRwsbaxgN_mitAJnacWylVoGRsldsESj79218jD7zrmT9u_xWUJAdFndX9WkI9g&scope=email+profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+openid&authuser=0&prompt=consent 302 in 1135ms
+ GET / 200 in 22ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard/project/5d3458f4-d52 200 in 19ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 10ms
+ ✓ Compiled in 160ms (842 modules)
+ ✓ Compiled in 180ms (856 modules)
+ GET / 200 in 54ms
+ GET /api/auth/session 200 in 24ms
+ GET /api/auth/session 200 in 3ms
+ GET /api/auth/providers 200 in 11ms
+ GET /api/auth/csrf 200 in 6ms
+ POST /api/auth/signin/google 200 in 435ms
+ GET /api/auth/callback/google?state=Io4mr7Pxl8mZTgmmsajmhFh2lRWLHoyWYRcbu5Vyl_U&code=4%2F0AfrIepBAq6R6NSqdei69Uh3jBlO1bU-3cncizL6f1qfABT4BSfA7IFZXMlbgFFHW9UIbMw&scope=email+profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+openid&authuser=0&prompt=consent 302 in 1613ms
+ GET / 200 in 12ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 5ms
+ ✓ Compiled in 227ms (621 modules)
+ ✓ Compiled in 139ms (621 modules)
+ ✓ Compiled in 113ms (621 modules)
+ ✓ Compiled in 56ms (314 modules)
+ ✓ Compiled in 222ms (621 modules)
+ ✓ Compiled in 145ms (621 modules)
+ ✓ Compiled in 129ms (623 modules)
+ ✓ Compiled in 126ms (623 modules)
+ ✓ Compiled in 130ms (623 modules)
+ ✓ Compiled in 138ms (623 modules)
+ ✓ Compiled in 156ms (623 modules)
+ ✓ Compiled in 146ms (623 modules)
+ ✓ Compiled in 117ms (623 modules)
+ ✓ Compiled in 128ms (623 modules)
+ GET /dashboard 200 in 43ms
+ ✓ Compiled /api/auth/[...nextauth] in 179ms (543 modules)
+ GET /api/auth/session 200 in 235ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard 200 in 56ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 4ms
+ GET /dashboard 200 in 19ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 5ms
+ GET / 200 in 31ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 10ms
+ GET /dashboard 200 in 23ms
+ GET /api/auth/session 200 in 13ms
+ ✓ Compiled /_not-found in 353ms (847 modules)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 403ms
+ GET / 200 in 34ms
+ GET /api/auth/session 200 in 28ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 10ms
+ GET /dashboard 200 in 19ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 5ms
+ GET / 200 in 19ms
+ GET /api/auth/session 200 in 12ms
+ GET /api/auth/session 200 in 11ms
+ GET /api/auth/session 200 in 23ms
+ GET /api/auth/session 200 in 9ms
+ GET /dashboard 200 in 28ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 8ms
+ GET /dashboard 200 in 17ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 4ms
+ GET /api/auth/csrf 200 in 5ms
+ POST /api/auth/signout 200 in 4ms
+ GET / 200 in 13ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 5ms
+ GET / 200 in 16ms
+ GET /api/auth/session 200 in 4ms
+ GET /api/auth/session 200 in 3ms
+ GET /api/auth/providers 200 in 4ms
+ GET /api/auth/csrf 200 in 2ms
+ POST /api/auth/signin/google 200 in 438ms
+ GET /api/auth/callback/google?state=OlT9H-RAVaQXvNFuJhs05g_xR7znQUCtGS9a7ecQTXY&code=4%2F0AfrIepB3lTH_FpNrTKhaqkVRFWHJhnZjJvl3pknUgP76ubag-eQ92KTYPCoAvybmUxYBFw&scope=email+profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+openid&authuser=0&prompt=none 302 in 899ms
+ GET / 200 in 17ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 5ms
+ ✓ Compiled in 190ms (609 modules)
+ ✓ Compiled in 94ms (609 modules)
+ ✓ Compiled in 230ms (623 modules)
+ ✓ Compiled in 165ms (623 modules)
+ ✓ Compiled in 151ms (623 modules)
+ ✓ Compiled in 174ms (623 modules)
+ ✓ Compiled in 139ms (623 modules)
+ ✓ Compiled in 67ms (315 modules)
+ ✓ Compiled in 108ms (315 modules)
+ GET /dashboard/project/ea6dd720-7333-430e-b4ac-fcf7e5fe6ee8 200 in 45ms
+ ✓ Compiled /api/auth/[...nextauth] in 216ms (543 modules)
+ GET /api/auth/session 200 in 277ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard/project/ea6dd720-7331-483b-9745-8e84b7daa841 200 in 44ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 7ms
+ ✓ Compiled /dashboard/project/[id]/review in 188ms (850 modules)
+ GET /dashboard/project/ea6dd720-7331-483b-9745-8e84b7daa841/review 200 in 393ms
+ GET /api/auth/session 200 in 25ms
+ GET /api/auth/session 200 in 11ms
+ GET /dashboard 200 in 30ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 7ms
+ GET /dashboard/project/ea6dd720-7331-483b-9745-8e84b7daa841/review 200 in 28ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 4ms
+ GET /api/auth/session 200 in 5ms
+ GET /dashboard/project/ea6dd720-7331-483b-9745-8e84b7daa841/review 200 in 21ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard/project/ea6dd720-7331-483b-9745-8e84b7daa841/review 200 in 17ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 9ms
+ GET /dashboard/project/ea6dd720-7331-483b-9745-8e84b7daa841 200 in 18ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 6ms
+ GET / 200 in 35ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 11ms
+ GET /dashboard 200 in 18ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard/new 200 in 23ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard/settings 200 in 22ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 5ms
+ ✓ Compiled in 188ms (611 modules)
+ ✓ Compiled in 252ms (625 modules)
+ GET /dashboard 200 in 52ms
+ ✓ Compiled /api/auth/[...nextauth] in 90ms (543 modules)
+ GET /api/auth/session 200 in 139ms
+ GET /api/auth/session 200 in 4ms
+ GET /api/auth/session 200 in 4ms
+ ✓ Compiled in 241ms (625 modules)
+ ✓ Compiled in 125ms (625 modules)
+ ✓ Compiled in 145ms (625 modules)
+ ✓ Compiled in 113ms (625 modules)
+ ✓ Compiled in 119ms (625 modules)
+ ✓ Compiled in 113ms (625 modules)
+ ✓ Compiled in 112ms (625 modules)
+ ✓ Compiled in 77ms (317 modules)
+ ✓ Compiled in 124ms (625 modules)
+ ✓ Compiled in 200ms (625 modules)
+ ✓ Compiled in 150ms (627 modules)
+ ✓ Compiled in 180ms (627 modules)
+ ✓ Compiled in 150ms (627 modules)
+ GET /dashboard 200 in 43ms
+ ✓ Compiled /api/auth/[...nextauth] in 223ms (544 modules)
+ GET /api/auth/session 200 in 283ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard 200 in 45ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 6ms
+ ✓ Compiled in 231ms (627 modules)
+ ✓ Compiled in 138ms (627 modules)
+ ✓ Compiled in 148ms (627 modules)
+ GET /dashboard 200 in 45ms
+ ✓ Compiled /api/auth/[...nextauth] in 98ms (544 modules)
+ GET /api/auth/session 200 in 151ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 4ms
+ ✓ Compiled in 192ms (862 modules)
+ ✓ Compiled in 189ms (613 modules)
+ ✓ Compiled in 275ms (627 modules)
+ GET /dashboard 200 in 43ms
+ ✓ Compiled /api/auth/[...nextauth] in 112ms (544 modules)
+ GET /api/auth/session 200 in 167ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 12ms
+ GET /api/auth/csrf 200 in 14ms
+ POST /api/auth/signout 200 in 8ms
+ ✓ Compiled / in 190ms (548 modules)
+ GET / 200 in 263ms
+ GET /api/auth/session 200 in 21ms
+ GET /api/auth/session 200 in 6ms
+ GET / 200 in 34ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/providers 200 in 16ms
+ GET /api/auth/csrf 200 in 6ms
+ POST /api/auth/signin/google 200 in 443ms
+ GET /api/auth/callback/google?state=ALl3HvwlMaxU1mpYF-W1jW9Tlm_PH3JhSl_0ovOKEE4&code=4%2F0AfrIepD9B9bkUzoXaKsMMAupEGW1NPl2sXX4uNtJVDXSlcljtrslokj3ipn4K78Vl9F_FA&scope=email+profile+openid+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email&authuser=0&prompt=none 302 in 851ms
+ GET / 200 in 14ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 10ms
+ GET / 200 in 29ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 11ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 11ms
+ GET /api/auth/session 200 in 20ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 19ms
+ GET /api/auth/session 200 in 10ms
+ GET / 200 in 25ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 13ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 13ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 8ms
+ GET / 200 in 31ms
+ GET /api/auth/session 200 in 15ms
+ GET /api/auth/session 200 in 17ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 21ms
+ GET /api/auth/session 200 in 16ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 13ms
+ GET /api/auth/session 200 in 14ms
+ GET /api/auth/session 200 in 15ms
+ GET / 200 in 24ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 11ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 16ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 16ms
+ GET /api/auth/session 200 in 9ms
+ GET /dashboard 200 in 22ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 6ms
+ GET / 200 in 31ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 12ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard 200 in 28ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 7ms
+ GET / 200 in 26ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 11ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 11ms
+ GET /api/auth/session 200 in 12ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 19ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 30ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 7ms
+ GET / 200 in 26ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 12ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 14ms
+ GET /api/auth/session 200 in 11ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 4ms
+ GET /api/auth/session 200 in 4ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 37ms
+ GET /api/auth/session 200 in 21ms
+ GET /api/auth/session 200 in 24ms
+ GET /api/auth/session 200 in 13ms
+ GET /api/auth/session 200 in 19ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 130ms
+ GET /api/auth/session 200 in 30ms
+ GET /api/auth/session 200 in 19ms
+ GET /api/auth/session 200 in 15ms
+ GET /api/auth/session 200 in 12ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 46ms
+ GET /api/auth/session 200 in 23ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 13ms
+ GET /api/auth/session 200 in 12ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 70ms
+ GET /api/auth/session 200 in 17ms
+ GET /api/auth/session 200 in 25ms
+ GET /api/auth/session 200 in 13ms
+ GET /api/auth/session 200 in 19ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 32ms
+ GET /api/auth/session 200 in 15ms
+ GET /api/auth/session 200 in 14ms
+ GET /api/auth/session 200 in 19ms
+ GET /api/auth/session 200 in 15ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 49ms
+ GET /api/auth/session 200 in 14ms
+ GET /api/auth/session 200 in 11ms
+ GET /api/auth/session 200 in 15ms
+ GET /api/auth/session 200 in 11ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 35ms
+ GET /api/auth/session 200 in 14ms
+ GET /api/auth/session 200 in 13ms
+ GET /api/auth/session 200 in 15ms
+ GET /api/auth/session 200 in 14ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 37ms
+ GET /api/auth/session 200 in 19ms
+ GET /api/auth/session 200 in 18ms
+ GET /api/auth/session 200 in 14ms
+ GET /api/auth/session 200 in 15ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 52ms
+ GET /api/auth/session 200 in 17ms
+ GET /api/auth/session 200 in 14ms
+ GET /api/auth/session 200 in 26ms
+ GET /api/auth/session 200 in 19ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 34ms
+ GET /api/auth/session 200 in 15ms
+ GET /api/auth/session 200 in 11ms
+ GET /api/auth/session 200 in 57ms
+ GET /api/auth/session 200 in 47ms
+ GET /dashboard/project/ebaeb87d-103e-4fb7-94bd-240db2e78920 200 in 23ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 7ms
+ GET / 200 in 25ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 17ms
+ GET /dashboard/project/f24d5a15-2fc1-4b77-ae56-e444f22a0119 200 in 32ms
+ GET /api/auth/session 200 in 18ms
+ GET /api/auth/session 200 in 15ms
+ GET /api/auth/session 200 in 27ms
+ GET /dashboard/project/f24d5a15-2fc1-4b77-ae56-e444f22a0119 200 in 19ms
+ GET /api/auth/session 200 in 12ms
+ GET /api/auth/session 200 in 11ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard/project/f24d5a15-2fc1-4b77-ae56-e444f22a0119 200 in 30ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 6ms
+ ✓ Compiled in 241ms (613 modules)
+ ✓ Compiled in 88ms (613 modules)
+ ✓ Compiled in 196ms (627 modules)
+ ✓ Compiled in 135ms (627 modules)
+ ✓ Compiled in 120ms (627 modules)
+ ✓ Compiled in 182ms (627 modules)
+ ✓ Compiled in 133ms (627 modules)
+ ✓ Compiled in 143ms (627 modules)
+ ✓ Compiled in 189ms (627 modules)
+ GET /dashboard 200 in 44ms
+ ✓ Compiled /api/auth/[...nextauth] in 232ms (544 modules)
+ GET /api/auth/session 200 in 292ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 5ms
+ GET /dashboard/project/f24d5a15-2fc1-4b77-ae56-e444f22a0119 200 in 52ms
+ GET /api/auth/session 200 in 12ms
+ GET /api/auth/session 200 in 12ms
+ GET /api/auth/session 200 in 7ms
+ GET /dashboard 200 in 18ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 7ms
+ GET /dashboard 200 in 30ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 5ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard 200 in 19ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 6ms
+ GET /dashboard/project/8cdc1973-884b-4cb6-9c66-148fa7fb4bdb 200 in 29ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 5ms
+ GET /dashboard/project/8cdc1973-884b-4cb6-9c66-148fa7fb4bdb 200 in 48ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 11ms
+ GET /dashboard/project/8cdc1973-884b-4cb6-9c66-148fa7fb4bdb 200 in 22ms
+ GET /api/auth/session 200 in 8ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 11ms
+ GET / 200 in 27ms
+ GET /api/auth/session 200 in 7ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 13ms
+ GET /api/auth/session 200 in 9ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 6ms
+ GET /api/auth/session 200 in 30ms
+ GET /api/auth/session 200 in 10ms
+ GET /api/auth/session 200 in 24ms
