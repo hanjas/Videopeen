@@ -11,6 +11,20 @@ venv/
 # Node
 node_modules/
 frontend/dist/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+
+# Test/analysis frames (old experiments)
+v2_analysis_frames/
+v2_analysis_frames_*/
+v3_fries_analysis/
+v2_deep_analysis.md
+
+# Symlinked test videos (large files)
+test-videos/
+
+# Frontend logs
+frontend.log
 
 # Uploads
 backend/uploads/
