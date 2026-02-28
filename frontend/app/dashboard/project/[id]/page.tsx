@@ -34,6 +34,25 @@ interface ConversationMessage {
   undone?: boolean;
 }
 
+interface Clip {
+  clip_id: string;
+  order: number;
+  source_video: string;
+  source_path: string;
+  start_time: number;
+  end_time: number;
+  duration: number;
+  effective_duration: number;
+  speed_factor: number;
+  action_id: number;
+  description: string;
+  reason: string;
+  recipe_step: number | null;
+  thumbnail_path: string | null;
+  status: "included" | "excluded" | "added_by_user";
+  added_by: "ai" | "user";
+}
+
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const [project, setProject] = useState<Project | null>(null);
@@ -41,6 +60,9 @@ export default function ProjectPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [regenerating, setRegenerating] = useState(false);
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState<"ai" | "manual">("ai");
   
   // Conversational editing state
   const [instruction, setInstruction] = useState("");
@@ -52,8 +74,7 @@ export default function ProjectPage() {
   // Proxy preview state
   const [proxyVideoUrl, setProxyVideoUrl] = useState<string | null>(null);
   const [hdRendering, setHdRendering] = useState(false);
-  const [videoKey, setVideoKey] = useState(0); // Force video reload
-  const [selectedExportFormat, setSelectedExportFormat] = useState<string | null>(null); // For re-export
+  const [videoKey, setVideoKey] = useState(0);
   
   // Text overlay state
   const [overlays, setOverlays] = useState<api.TextOverlay[]>([]);
@@ -73,7 +94,16 @@ export default function ProjectPage() {
   const [editPlan, setEditPlan] = useState<any>(null);
   const [editorNotes, setEditorNotes] = useState("");
   const [timelineClips, setTimelineClips] = useState<any[]>([]);
-  const [showAIAnalysis, setShowAIAnalysis] = useState(true);
+  
+  // Manual arrange state
+  const [manualClips, setManualClips] = useState<Clip[]>([]);
+  const [clipPool, setClipPool] = useState<Clip[]>([]);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [savingManual, setSavingManual] = useState(false);
+  const [renderingManual, setRenderingManual] = useState(false);
+  const [totalDuration, setTotalDuration] = useState(0);
+  const [targetDuration, setTargetDuration] = useState(60);
   
   const wsRef = useRef<WebSocket | null>(null);
   const { toast } = useToast();
@@ -110,7 +140,7 @@ export default function ProjectPage() {
         toast("success", "Video generation complete! 🎬");
         fetchProject();
         setRefining(false);
-        // HD render complete - swap from proxy to HD
+        setRenderingManual(false);
         if (hdRendering) {
           setHdRendering(false);
           setProxyVideoUrl(null);
@@ -120,6 +150,7 @@ export default function ProjectPage() {
         toast("error", "Processing failed");
         fetchProject();
         setRefining(false);
+        setRenderingManual(false);
       }
     });
     wsRef.current = ws;
@@ -156,6 +187,15 @@ export default function ProjectPage() {
         setEditPlan(plan);
         setEditorNotes(plan.editor_notes || "");
         setTimelineClips(plan.timeline?.clips || []);
+        
+        // Load manual arrange data
+        const timelineClips = (plan.timeline?.clips || []).sort(
+          (a: Clip, b: Clip) => a.order - b.order
+        );
+        setManualClips(timelineClips);
+        setClipPool(plan.clip_pool || []);
+        setTargetDuration(plan.timeline?.target_duration || 60);
+        setTotalDuration(plan.timeline?.total_effective_duration || 0);
       } catch (err) {
         console.error("Failed to load edit plan:", err);
       }
@@ -163,6 +203,14 @@ export default function ProjectPage() {
     
     loadEditPlan();
   }, [id, project?.status]);
+
+  // Recalculate total duration when manual clips change
+  useEffect(() => {
+    const total = manualClips
+      .filter((c) => c.status === "included")
+      .reduce((sum, c) => sum + c.effective_duration, 0);
+    setTotalDuration(total);
+  }, [manualClips]);
 
   // Load conversation history
   useEffect(() => {
@@ -244,7 +292,6 @@ export default function ProjectPage() {
     try {
       const result = await api.refineEditPlan(id, userMsg.text);
       
-      // Remove loading message
       setConversation((prev) => prev.filter((m) => m.id !== "loading"));
       
       if (result.proxy_preview_url) {
@@ -253,7 +300,6 @@ export default function ProjectPage() {
         setVideoKey((k) => k + 1);
         setHdRendering(result.hd_rendering || false);
         
-        // Use conversation messages from backend (source of truth)
         if (result.conversation_messages) {
           const newMsgs: ConversationMessage[] = result.conversation_messages
             .filter((m: any) => m.role === "assistant")
@@ -276,7 +322,6 @@ export default function ProjectPage() {
       setRefining(false);
       
     } catch (e: unknown) {
-      // Remove loading, add error
       setConversation((prev) => prev.filter((m) => m.id !== "loading"));
       const errorMsg: ConversationMessage = {
         id: `err-${Date.now()}`,
@@ -299,7 +344,6 @@ export default function ProjectPage() {
         setVideoKey((k) => k + 1);
       }
       
-      // Grey out messages from undone version
       if (result.undone_version) {
         setConversation((prev) => {
           const updated = prev.map((m) =>
@@ -332,7 +376,6 @@ export default function ProjectPage() {
         setVideoKey((k) => k + 1);
       }
       
-      // Un-grey messages from redone version
       if (result.redone_version) {
         setConversation((prev) => {
           const updated = prev.map((m) =>
@@ -368,7 +411,6 @@ export default function ProjectPage() {
     const description = (clip.description || "").toLowerCase();
     const reason = (clip.reason || "").toLowerCase();
     
-    // Check action_type first
     if (actionType === "ingredient_add" || description.includes("prep") || description.includes("chop") || description.includes("dice")) {
       return { icon: "🔪", label: "Prep", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" };
     }
@@ -382,18 +424,15 @@ export default function ProjectPage() {
       return { icon: "🥄", label: "Mix", color: "bg-green-500/20 text-green-400 border-green-500/30" };
     }
     
-    // Check for hero/key moments in description or reason
     if (description.includes("hero") || description.includes("money shot") || description.includes("cheese pull") || 
         description.includes("chocolate ooze") || description.includes("drizzle") || reason.includes("key moment")) {
       return { icon: "✨", label: "Hero", color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" };
     }
     
-    // Check for action moments
     if (clip.shows_action_moment || description.includes("action") || description.includes("flip") || description.includes("pour")) {
       return { icon: "⚡", label: "Action", color: "bg-red-500/20 text-red-400 border-red-500/30" };
     }
     
-    // Check for beauty shots
     if (description.includes("beauty") || description.includes("close-up") || description.includes("close up") || (clip.visual_quality && clip.visual_quality >= 8)) {
       return { icon: "📸", label: "Beauty", color: "bg-pink-500/20 text-pink-400 border-pink-500/30" };
     }
@@ -454,11 +493,9 @@ export default function ProjectPage() {
     let updatedOverlays: api.TextOverlay[];
     
     if (editingOverlayIndex !== null) {
-      // Update existing overlay
       updatedOverlays = [...overlays];
       updatedOverlays[editingOverlayIndex] = newOverlay;
     } else {
-      // Add new overlay
       updatedOverlays = [...overlays, newOverlay];
     }
     
@@ -507,6 +544,86 @@ export default function ProjectPage() {
     }
   };
 
+  // Manual arrange functions
+  const handleDragStart = (idx: number) => {
+    setDragIdx(idx);
+  };
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    setDragOverIdx(idx);
+  };
+
+  const handleDrop = (idx: number) => {
+    if (dragIdx === null || dragIdx === idx) {
+      setDragIdx(null);
+      setDragOverIdx(null);
+      return;
+    }
+    const newClips = [...manualClips];
+    const [moved] = newClips.splice(dragIdx, 1);
+    newClips.splice(idx, 0, moved);
+    newClips.forEach((c, i) => (c.order = i));
+    setManualClips(newClips);
+    setDragIdx(null);
+    setDragOverIdx(null);
+  };
+
+  const handleDragEnd = () => {
+    setDragIdx(null);
+    setDragOverIdx(null);
+  };
+
+  const removeClip = (clipId: string) => {
+    const clip = manualClips.find((c) => c.clip_id === clipId);
+    if (!clip) return;
+    setManualClips((prev) => prev.filter((c) => c.clip_id !== clipId));
+    setClipPool((prev) => [...prev, { ...clip, status: "excluded" as const }]);
+    toast("info", `Removed "${clip.description.slice(0, 30)}..."`);
+  };
+
+  const addFromPool = (clipId: string) => {
+    const clip = clipPool.find((c) => c.clip_id === clipId);
+    if (!clip) return;
+    const newClip: Clip = {
+      ...clip,
+      status: "included",
+      added_by: "user",
+      order: manualClips.length,
+      speed_factor: clip.speed_factor || 1.0,
+      effective_duration: clip.duration / (clip.speed_factor || 1.0),
+    };
+    setManualClips((prev) => [...prev, newClip]);
+    setClipPool((prev) => prev.filter((c) => c.clip_id !== clipId));
+    toast("success", `Added "${clip.description.slice(0, 30)}..."`);
+  };
+
+  const handleSaveManual = async () => {
+    setSavingManual(true);
+    try {
+      await api.updateEditPlan(id, manualClips);
+      toast("success", "Edit plan saved");
+    } catch {
+      toast("error", "Failed to save");
+    } finally {
+      setSavingManual(false);
+    }
+  };
+
+  const handleRenderFinal = async () => {
+    if (!confirm("Start rendering final video? This may take a few minutes.")) return;
+    setRenderingManual(true);
+    try {
+      await api.updateEditPlan(id, manualClips);
+      await api.confirmAndRender(id);
+      toast("success", "Rendering started! 🎬");
+      setActiveTab("ai"); // Switch to AI tab to see progress
+    } catch (e: unknown) {
+      toast("error", e instanceof Error ? e.message : "Failed to start render");
+      setRenderingManual(false);
+    }
+  };
+
   const formatDate = (d: string) => {
     try {
       return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -528,529 +645,626 @@ export default function ProjectPage() {
 
   if (loading) {
     return (
-      <div className="animate-pulse space-y-6">
-        <div className="h-8 bg-white/5 rounded w-48" />
-        <div className="aspect-video bg-white/5 rounded-2xl" />
-        <div className="h-20 bg-white/5 rounded-xl" />
+      <div className="h-screen flex items-center justify-center">
+        <div className="animate-pulse space-y-6 w-full max-w-4xl px-8">
+          <div className="h-8 bg-white/5 rounded w-48" />
+          <div className="aspect-video bg-white/5 rounded-2xl" />
+          <div className="h-20 bg-white/5 rounded-xl" />
+        </div>
       </div>
     );
   }
 
   if (!project) {
     return (
-      <div className="text-center py-20">
-        <p className="text-red-400">{error || "Project not found"}</p>
-        <Link href="/dashboard" className="text-sm text-accent mt-4 inline-block">← Back to Dashboard</Link>
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-400 mb-4">{error || "Project not found"}</p>
+          <Link href="/dashboard" className="text-sm text-accent hover:text-accent-hover">← Back to Dashboard</Link>
+        </div>
       </div>
     );
   }
 
   const stepIdx = getStepIndex();
+  const durationPct = targetDuration > 0 ? Math.min((totalDuration / targetDuration) * 100, 150) : 0;
+  const getDurationStatus = () => {
+    if (totalDuration <= targetDuration + 5) {
+      return { color: "bg-green-500", text: "text-green-400", icon: "✓" };
+    } else if (totalDuration <= targetDuration + 10) {
+      return { color: "bg-yellow-500", text: "text-yellow-400", icon: "⚠" };
+    } else {
+      return { color: "bg-red-500", text: "text-red-400", icon: "✕" };
+    }
+  };
+  const durationStatus = getDurationStatus();
 
   return (
-    <div>
+    <div className="h-screen flex flex-col bg-[#0a0a0a] overflow-hidden">
+      {/* Fixed Header */}
+      <header className="flex-shrink-0 border-b border-white/5 bg-[#0a0a0a] px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link 
+              href="/dashboard" 
+              className="text-gray-500 hover:text-white transition-all duration-200"
+              title="Back to Projects"
+            >
+              ← Projects
+            </Link>
+            <div className="h-6 w-px bg-white/10" />
+            <div>
+              <h1 className="text-lg font-bold text-white">{project.name}</h1>
+              <div className="flex items-center gap-3 text-xs text-gray-500">
+                <span>{formatDate(project.created_at)}</span>
+                {decisions.length > 0 && (
+                  <>
+                    <span>•</span>
+                    <span>{decisions.length} clips</span>
+                  </>
+                )}
+                <span className={`text-white text-[10px] px-2 py-0.5 rounded-full font-medium ${statusColor[project.status]}`}>
+                  {project.status}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {project.status === "completed" && (
+              <>
+                <button
+                  onClick={handleDownload}
+                  className="px-4 py-2 rounded-lg border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-all duration-200"
+                >
+                  💾 Save
+                </button>
+                <button
+                  onClick={handleDownload}
+                  className="bg-accent hover:bg-accent-hover text-white px-6 py-2 rounded-lg font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/20"
+                >
+                  ⬇️ Export
+                </button>
+              </>
+            )}
+            {isProcessing(project.status) && (
+              <button
+                onClick={handleRegenerate}
+                disabled={regenerating}
+                className="px-4 py-2 rounded-lg border border-white/10 text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200 disabled:opacity-50"
+              >
+                {regenerating ? "..." : "↻ Regenerate"}
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
       {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-          {error}
-          <button onClick={() => setError("")} className="ml-2 text-red-300 hover:text-white">✕</button>
+        <div className="flex-shrink-0 mx-6 mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError("")} className="text-red-300 hover:text-white">✕</button>
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white">{project.name}</h1>
-          <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
-            <span>{formatDate(project.created_at)}</span>
-            {decisions.length > 0 && (
-              <>
-                <span>•</span>
-                <span>{decisions.length} clips</span>
-              </>
-            )}
-            <span className={`text-white text-[10px] px-2 py-0.5 rounded-full font-medium ml-1 ${statusColor[project.status]}`}>
-              {project.status}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleRegenerate}
-            disabled={regenerating || isProcessing(project.status)}
-            className="px-4 py-2.5 rounded-lg border border-white/10 text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200 disabled:opacity-50"
-          >
-            {regenerating ? "..." : "↻ Regenerate"}
-          </button>
-          <Link href="/dashboard" className="px-4 py-2.5 rounded-lg text-sm text-gray-500 hover:text-white transition-all duration-200">
-            ← Back
-          </Link>
-        </div>
-      </div>
-
-      {/* Video Player / Status */}
+      {/* Main Content Area - Split Panel */}
       {project.status === "completed" && project.output_path ? (
-        <div className="mb-6">
-          <div className="mx-auto mb-6 relative" style={{ maxWidth: "350px" }}>
-            {/* HD Rendering Badge */}
-            {hdRendering && (
-              <div className="absolute top-3 right-3 bg-yellow-500/90 text-black text-xs px-3 py-1.5 rounded-full font-semibold z-10 flex items-center gap-1">
-                <span className="animate-pulse">⚙️</span> HD rendering...
-              </div>
-            )}
-            
-            <video
-              key={`${videoKey}-${proxyVideoUrl || project.output_path}`}
-              src={proxyVideoUrl || api.getVideoUrl(project.output_path)}
-              controls
-              autoPlay
-              className="w-full rounded-2xl border border-white/5 bg-black"
-              style={{ maxHeight: "55vh" }}
-            />
-          </div>
-
-          {/* Edit Summary Card - Intelligence Layer */}
-          {editorNotes && editPlan && (
-            <EditSummaryCard
-              editorNotes={editorNotes}
-              clipCount={timelineClips.length || decisions.length}
-              totalDuration={editPlan.timeline?.total_effective_duration || 0}
-              targetDuration={editPlan.timeline?.target_duration || project.output_duration || 60}
-              recipeDetails={project.recipe_details}
-              dishName={project.dish_name}
-            />
-          )}
-
-          {/* AI Analysis Section */}
-          {editorNotes && (
-            <div className="max-w-2xl mx-auto mb-6">
-              <button
-                onClick={() => setShowAIAnalysis(!showAIAnalysis)}
-                className="w-full bg-yellow-500/5 border border-yellow-500/20 rounded-xl px-4 py-3 text-left hover:bg-yellow-500/10 transition-all duration-200"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">🤖</span>
-                    <span className="text-sm font-semibold text-yellow-400">AI Analysis</span>
-                  </div>
-                  <svg
-                    className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${showAIAnalysis ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              </button>
-              
-              {showAIAnalysis && (
-                <div className="mt-2 bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
-                  <div className="text-xs text-gray-300 whitespace-pre-wrap">{editorNotes}</div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Conversational Edit Section */}
-          <div className="max-w-2xl mx-auto mb-6">
-            <div className="bg-surface border border-white/5 rounded-xl p-6">
-              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                💬 Tell AI What to Change
-              </h3>
-
-              {/* Conversation History */}
-              {historyLoading ? (
-                <div className="mb-4 space-y-3 animate-pulse">
-                  {[...Array(2)].map((_, i) => (
-                    <div key={i} className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}>
-                      <div className={`rounded-lg h-8 ${i % 2 === 0 ? "bg-accent/10 w-40" : "bg-white/5 w-48"}`} />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Split Panel Container */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left Panel - Video Preview */}
+            <div className="w-[55%] flex flex-col border-r border-white/5 bg-[#0a0a0a] p-6 overflow-y-auto">
+              <div className="flex-shrink-0">
+                {/* Video Player */}
+                <div className="mx-auto mb-4 relative" style={{ maxWidth: "400px" }}>
+                  {hdRendering && (
+                    <div className="absolute top-3 right-3 bg-yellow-500/90 text-black text-xs px-3 py-1.5 rounded-full font-semibold z-10 flex items-center gap-1">
+                      <span className="animate-pulse">⚙️</span> HD rendering...
                     </div>
-                  ))}
+                  )}
+                  
+                  <video
+                    key={`${videoKey}-${proxyVideoUrl || project.output_path}`}
+                    src={proxyVideoUrl || api.getVideoUrl(project.output_path)}
+                    controls
+                    className="w-full rounded-xl border border-white/10 bg-black"
+                    style={{ maxHeight: "60vh" }}
+                  />
                 </div>
-              ) : conversation.length > 0 && (
-                <div className="mb-4 max-h-60 overflow-y-auto space-y-2 pb-2">
-                  {conversation.map((msg, idx) => {
-                    // Undo/redo pills
-                    if (msg.type === "undo" || msg.type === "redo") {
-                      return (
-                        <div key={msg.id || idx} className="flex justify-center py-1">
-                          <span className="text-xs text-gray-500 bg-white/5 px-3 py-1 rounded-full">
-                            {msg.type === "undo" ? "↶" : "↷"} {msg.text}
-                          </span>
-                        </div>
-                      );
-                    }
-                    
-                    // Loading bubble
-                    if (msg.type === "loading") {
-                      return (
-                        <div key="loading" className="flex justify-start">
-                          <div className="bg-white/5 px-4 py-2 rounded-lg text-sm text-gray-400 flex items-center gap-2">
-                            <span className="animate-pulse">●</span> Working on it…
-                          </div>
-                        </div>
-                      );
-                    }
-                    
-                    // Regular user/system messages
+
+                {/* Aspect Ratio Selector */}
+                <div className="flex justify-center gap-2 mb-4">
+                  {[
+                    { value: "9:16", label: "9:16", icon: "📱" },
+                    { value: "1:1", label: "1:1", icon: "⬜" },
+                    { value: "16:9", label: "16:9", icon: "🖥" },
+                  ].map((format) => {
+                    const isCurrentFormat = project?.aspect_ratio === format.value;
                     return (
-                      <div
-                        key={msg.id || idx}
-                        className={`flex ${msg.type === "user" ? "justify-end" : "justify-start"} ${msg.undone ? "opacity-30" : ""}`}
+                      <button
+                        key={format.value}
+                        disabled
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 ${
+                          isCurrentFormat
+                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                            : "bg-white/5 text-gray-500 border border-white/10"
+                        }`}
+                        title={isCurrentFormat ? "Current format" : format.label}
                       >
-                        <div
-                          className={`max-w-[80%] px-4 py-2 rounded-lg text-sm ${
-                            msg.type === "user"
-                              ? "bg-accent/20 text-white"
-                              : "bg-white/5 text-gray-300"
-                          } ${msg.undone ? "line-through" : ""}`}
-                        >
-                          {msg.text}
-                        </div>
-                      </div>
+                        <span>{format.icon}</span>
+                        <span>{format.label}</span>
+                        {isCurrentFormat && <span className="text-[9px]">✓</span>}
+                      </button>
                     );
                   })}
-                  <div ref={conversationEndRef} />
                 </div>
-              )}
 
-              {/* Undo/Redo Toolbar - Compact */}
-              <div className="flex gap-2 mb-3 items-center">
-                <button
-                  onClick={handleUndo}
-                  disabled={refining}
-                  className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Undo last edit"
-                >
-                  ↶
-                </button>
-                <button
-                  onClick={handleRedo}
-                  disabled={refining}
-                  className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Redo next edit"
-                >
-                  ↷
-                </button>
-                <span className="text-xs text-gray-500 ml-1">Edit history</span>
-              </div>
-
-              {/* Input Form */}
-              <form onSubmit={handleRefine} className="flex gap-2">
-                <input
-                  type="text"
-                  value={instruction}
-                  onChange={(e) => setInstruction(e.target.value)}
-                  placeholder="Describe changes... e.g. 'Remove the chopping part'"
-                  disabled={refining}
-                  className="flex-1 px-4 py-3 bg-[#111] border border-white/10 rounded-lg text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-accent/50 disabled:opacity-50"
-                />
-                <button
-                  type="submit"
-                  disabled={refining || !instruction.trim()}
-                  className="px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-lg font-medium text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {refining ? "..." : "Send"}
-                </button>
-              </form>
-
-              {/* Suggested Prompt Chips */}
-              <div className="mt-3">
-                <p className="text-xs text-gray-400 mb-2">💡 Try these:</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { text: "Make it 30 seconds", condition: (editPlan?.timeline?.total_effective_duration || 0) > 35 },
-                    { text: "Make it shorter", condition: (editPlan?.timeline?.total_effective_duration || 0) > 45 },
-                    { text: "Remove blurry clips", condition: true },
-                    { text: "Speed up prep section", condition: editorNotes.toLowerCase().includes("prep") },
-                    { text: "Add the close-up shot", condition: true },
-                    { text: "Remove idle moments", condition: true },
-                    { text: "Focus on the plating", condition: editorNotes.toLowerCase().includes("plat") },
-                  ]
-                    .filter(chip => chip.condition)
-                    .slice(0, 4)
-                    .map((chip, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          setInstruction(chip.text);
-                          // Auto-submit if not already refining
-                          if (!refining && chip.text.trim()) {
-                            setTimeout(() => {
-                              const form = document.querySelector('form');
-                              if (form) form.requestSubmit();
-                            }, 100);
-                          }
-                        }}
-                        disabled={refining}
-                        className="px-3 py-1.5 bg-white/5 hover:bg-accent/20 border border-white/10 hover:border-accent/50 text-gray-300 hover:text-white rounded-lg text-xs transition-all duration-200 disabled:opacity-50"
-                      >
-                        {chip.text}
-                      </button>
-                    ))}
-                </div>
+                {/* Edit Summary Card */}
+                {editorNotes && editPlan && (
+                  <div className="mb-4">
+                    <EditSummaryCard
+                      editorNotes={editorNotes}
+                      clipCount={timelineClips.length || decisions.length}
+                      totalDuration={editPlan.timeline?.total_effective_duration || 0}
+                      targetDuration={editPlan.timeline?.target_duration || project.output_duration || 60}
+                      recipeDetails={project.recipe_details}
+                      dishName={project.dish_name}
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Advanced Edit Link */}
-            <div className="text-center mt-4">
-              <Link
-                href={`/dashboard/project/${id}/review`}
-                className="text-xs text-gray-500 hover:text-accent transition-all duration-200 underline"
-              >
-                Advanced Edit (Manual)
-              </Link>
+            {/* Right Panel - Tabbed Interface */}
+            <div className="w-[45%] flex flex-col bg-[#0a0a0a]">
+              {/* Tab Headers */}
+              <div className="flex-shrink-0 border-b border-white/5 px-6">
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setActiveTab("ai")}
+                    className={`px-4 py-3 text-sm font-medium transition-all duration-200 border-b-2 ${
+                      activeTab === "ai"
+                        ? "border-accent text-white"
+                        : "border-transparent text-gray-500 hover:text-gray-300"
+                    }`}
+                  >
+                    💬 AI Chat
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("manual")}
+                    className={`px-4 py-3 text-sm font-medium transition-all duration-200 border-b-2 ${
+                      activeTab === "manual"
+                        ? "border-accent text-white"
+                        : "border-transparent text-gray-500 hover:text-gray-300"
+                    }`}
+                  >
+                    🎬 Manual
+                  </button>
+                </div>
+              </div>
+
+              {/* Tab Content */}
+              <div className="flex-1 overflow-hidden">
+                {activeTab === "ai" ? (
+                  /* AI Chat Panel */
+                  <div className="h-full flex flex-col p-6">
+                    {/* Conversation History */}
+                    <div className="flex-1 overflow-y-auto mb-4 pr-2 space-y-2">
+                      {historyLoading ? (
+                        <div className="animate-pulse space-y-3">
+                          {[...Array(3)].map((_, i) => (
+                            <div key={i} className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}>
+                              <div className={`rounded-lg h-8 ${i % 2 === 0 ? "bg-accent/10 w-40" : "bg-white/5 w-48"}`} />
+                            </div>
+                          ))}
+                        </div>
+                      ) : conversation.length === 0 ? (
+                        <div className="text-center py-8">
+                          <p className="text-sm text-gray-500 mb-2">Start a conversation with AI</p>
+                          <p className="text-xs text-gray-600">Try: "Make it shorter" or "Remove blurry clips"</p>
+                        </div>
+                      ) : (
+                        <>
+                          {conversation.map((msg, idx) => {
+                            if (msg.type === "undo" || msg.type === "redo") {
+                              return (
+                                <div key={msg.id || idx} className="flex justify-center py-1">
+                                  <span className="text-xs text-gray-500 bg-white/5 px-3 py-1 rounded-full">
+                                    {msg.type === "undo" ? "↶" : "↷"} {msg.text}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            
+                            if (msg.type === "loading") {
+                              return (
+                                <div key="loading" className="flex justify-start">
+                                  <div className="bg-white/5 px-4 py-2 rounded-lg text-sm text-gray-400 flex items-center gap-2">
+                                    <span className="animate-pulse">●</span> Working on it…
+                                  </div>
+                                </div>
+                              );
+                            }
+                            
+                            return (
+                              <div
+                                key={msg.id || idx}
+                                className={`flex ${msg.type === "user" ? "justify-end" : "justify-start"} ${msg.undone ? "opacity-30" : ""}`}
+                              >
+                                <div
+                                  className={`max-w-[80%] px-4 py-2 rounded-lg text-sm ${
+                                    msg.type === "user"
+                                      ? "bg-accent/20 text-white"
+                                      : "bg-white/5 text-gray-300"
+                                  } ${msg.undone ? "line-through" : ""}`}
+                                >
+                                  {msg.text}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <div ref={conversationEndRef} />
+                        </>
+                      )}
+                    </div>
+
+                    {/* Prompt Chips */}
+                    {!historyLoading && (
+                      <div className="flex-shrink-0 mb-3">
+                        <p className="text-xs text-gray-500 mb-2">💡 Try these:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { text: "Make it 30 seconds", condition: (editPlan?.timeline?.total_effective_duration || 0) > 35 },
+                            { text: "Remove blurry clips", condition: true },
+                            { text: "Speed up prep section", condition: editorNotes.toLowerCase().includes("prep") },
+                            { text: "Focus on the plating", condition: editorNotes.toLowerCase().includes("plat") },
+                          ]
+                            .filter(chip => chip.condition)
+                            .slice(0, 4)
+                            .map((chip, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setInstruction(chip.text);
+                                  setTimeout(() => {
+                                    const form = document.getElementById('chat-form') as HTMLFormElement;
+                                    if (form) form.requestSubmit();
+                                  }, 100);
+                                }}
+                                disabled={refining}
+                                className="px-3 py-1.5 bg-white/5 hover:bg-accent/20 border border-white/10 hover:border-accent/50 text-gray-400 hover:text-white rounded-lg text-xs transition-all duration-200 disabled:opacity-50"
+                              >
+                                {chip.text}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Chat Input */}
+                    <div className="flex-shrink-0">
+                      {/* Undo/Redo Toolbar */}
+                      <div className="flex gap-2 mb-3 items-center">
+                        <button
+                          onClick={handleUndo}
+                          disabled={refining}
+                          className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-base transition-all duration-200 disabled:opacity-50"
+                          title="Undo last edit"
+                        >
+                          ↶
+                        </button>
+                        <button
+                          onClick={handleRedo}
+                          disabled={refining}
+                          className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-base transition-all duration-200 disabled:opacity-50"
+                          title="Redo next edit"
+                        >
+                          ↷
+                        </button>
+                        <span className="text-xs text-gray-500">Edit history</span>
+                      </div>
+
+                      <form id="chat-form" onSubmit={handleRefine} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={instruction}
+                          onChange={(e) => setInstruction(e.target.value)}
+                          placeholder="Tell AI what to change..."
+                          disabled={refining}
+                          className="flex-1 px-4 py-3 bg-[#111] border border-white/10 rounded-lg text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-accent/50 disabled:opacity-50"
+                        />
+                        <button
+                          type="submit"
+                          disabled={refining || !instruction.trim()}
+                          className="px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-lg font-medium text-sm transition-all duration-200 disabled:opacity-50"
+                        >
+                          {refining ? "..." : "Send"}
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                ) : (
+                  /* Manual Arrange Panel */
+                  <div className="h-full flex flex-col p-6">
+                    {/* Duration Progress */}
+                    <div className="flex-shrink-0 mb-4">
+                      <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+                        <span>Duration</span>
+                        <span className={durationStatus.text}>
+                          {durationStatus.icon} {formatTime(totalDuration)} / {formatTime(targetDuration)}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${durationStatus.color} rounded-full transition-all duration-300`}
+                          style={{ width: `${Math.min(durationPct, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* AI Notes */}
+                    {editorNotes && (
+                      <div className="flex-shrink-0 bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3 mb-4">
+                        <div className="flex items-start gap-2">
+                          <span className="text-lg">🤖</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-yellow-400 mb-1">AI Notes</p>
+                            <p className="text-xs text-gray-400 line-clamp-3">{editorNotes}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Clip Grid - Scrollable */}
+                    <div className="flex-1 overflow-y-auto pr-2">
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        {manualClips.map((clip, idx) => {
+                          const clipTag = getClipTag(clip);
+                          return (
+                            <div
+                              key={clip.clip_id}
+                              draggable
+                              onDragStart={() => handleDragStart(idx)}
+                              onDragOver={(e) => handleDragOver(e, idx)}
+                              onDrop={() => handleDrop(idx)}
+                              onDragEnd={handleDragEnd}
+                              className={`bg-surface rounded-lg border overflow-hidden cursor-move hover:border-accent/30 transition-all duration-200 ${
+                                dragOverIdx === idx ? "border-accent" : "border-white/5"
+                              }`}
+                            >
+                              <div className="aspect-video bg-[#141414] flex items-center justify-center relative">
+                                <img
+                                  src={api.getClipThumbnailUrl(id, clip.clip_id)}
+                                  alt={clip.description}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const fallback = e.currentTarget.nextElementSibling;
+                                    if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                                  }}
+                                />
+                                <span className="text-xl absolute hidden items-center justify-center w-full h-full">🎞</span>
+                                
+                                {clipTag && (
+                                  <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border flex items-center gap-1 ${clipTag.color}`}>
+                                    <span>{clipTag.icon}</span>
+                                  </div>
+                                )}
+
+                                {/* Remove button */}
+                                <button
+                                  onClick={() => removeClip(clip.clip_id)}
+                                  className="absolute top-1 right-1 w-6 h-6 bg-black/70 hover:bg-red-500 text-white rounded-full flex items-center justify-center text-xs transition-all duration-200"
+                                  title="Remove clip"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                              <div className="p-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[10px] text-accent font-semibold">#{idx + 1}</span>
+                                  <span className="text-[10px] text-gray-500">
+                                    {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-gray-400 truncate">{clip.description}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Clip Pool */}
+                      {clipPool.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-white/5">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-xs font-semibold text-gray-400">Excluded Clips ({clipPool.length})</h4>
+                            <button
+                              onClick={() => setManualClips((prev) => [...prev, ...clipPool.map((c, i) => ({ ...c, status: "included" as const, order: prev.length + i }))])}
+                              className="text-xs text-accent hover:text-accent-hover"
+                            >
+                              + Add All
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {clipPool.map((clip) => (
+                              <button
+                                key={clip.clip_id}
+                                onClick={() => addFromPool(clip.clip_id)}
+                                className="bg-white/5 hover:bg-white/10 rounded-lg p-2 text-left transition-all duration-200 border border-white/5 hover:border-accent/30"
+                              >
+                                <p className="text-[10px] text-gray-400 truncate">{clip.description}</p>
+                                <p className="text-[9px] text-gray-600 mt-1">{formatTime(clip.duration)}s</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex-shrink-0 flex gap-2 pt-4 border-t border-white/5">
+                      <button
+                        onClick={handleSaveManual}
+                        disabled={savingManual}
+                        className="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50"
+                      >
+                        {savingManual ? "Saving..." : "💾 Save"}
+                      </button>
+                      <button
+                        onClick={handleRenderFinal}
+                        disabled={renderingManual || manualClips.length === 0}
+                        className="flex-1 bg-accent hover:bg-accent-hover text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 disabled:opacity-50"
+                      >
+                        {renderingManual ? "Starting..." : "🎬 Render"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Text Overlay Section */}
-          <div className="max-w-2xl mx-auto mb-6">
-            <div className="bg-surface border border-white/5 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  📝 Text Overlays
-                  <span className="text-xs text-gray-500 font-normal">({overlays.length})</span>
-                </h3>
-                <div className="flex gap-2">
+          {/* Bottom Strip - Clip Timeline & Text Overlays */}
+          <div className="flex-shrink-0 border-t border-white/5 bg-[#0a0a0a] p-6">
+            {/* Clip Timeline */}
+            {decisions.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-white mb-3">Clip Timeline</h3>
+                <div className="relative">
                   <button
-                    onClick={handleAutoGenerateOverlays}
-                    disabled={autoGenerating || savingOverlays}
-                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-xs font-medium transition-all duration-200 disabled:opacity-50"
+                    onClick={() => {
+                      const container = document.getElementById('bottom-clip-timeline');
+                      if (container) container.scrollBy({ left: -200, behavior: 'smooth' });
+                    }}
+                    className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-7 h-7 flex items-center justify-center transition-all duration-200 shadow-lg text-sm"
                   >
-                    {autoGenerating ? "⏳" : "✨"} Auto-generate
+                    ←
                   </button>
+                  
                   <button
-                    onClick={() => openOverlayModal()}
-                    disabled={savingOverlays}
-                    className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-lg text-xs font-medium transition-all duration-200 disabled:opacity-50"
+                    onClick={() => {
+                      const container = document.getElementById('bottom-clip-timeline');
+                      if (container) container.scrollBy({ left: 200, behavior: 'smooth' });
+                    }}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-7 h-7 flex items-center justify-center transition-all duration-200 shadow-lg text-sm"
                   >
-                    + Add Text
+                    →
                   </button>
+                  
+                  <div id="bottom-clip-timeline" className="flex gap-2 overflow-x-auto pb-2 px-8 scroll-smooth">
+                    {decisions
+                      .sort((a, b) => a.sequence_order - b.sequence_order)
+                      .map((clip) => {
+                        const timelineClip = timelineClips.find(c => c.clip_id === clip.id || c.action_id === clip.action_id);
+                        const clipTag = getClipTag(timelineClip || clip);
+                        
+                        return (
+                          <div
+                            key={clip.id}
+                            className="flex-shrink-0 w-32 bg-surface rounded-lg border border-white/5 hover:border-accent/30 transition-all duration-200 overflow-hidden group cursor-pointer"
+                          >
+                            <div className="aspect-video bg-[#141414] flex items-center justify-center relative">
+                              <img
+                                src={api.getClipThumbnailUrl(id, clip.id)}
+                                alt={clip.reason || "Clip"}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  const fallback = e.currentTarget.nextElementSibling;
+                                  if (fallback) (fallback as HTMLElement).style.display = 'block';
+                                }}
+                              />
+                              <span className="text-lg absolute" style={{ display: 'none' }}>🎞</span>
+                              
+                              {clipTag && (
+                                <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border flex items-center gap-0.5 ${clipTag.color}`}>
+                                  <span className="text-[10px]">{clipTag.icon}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="p-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-accent font-semibold">#{clip.sequence_order + 1}</span>
+                                <span className="text-[9px] text-gray-600">{formatTime(clip.end_time - clip.start_time)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Overlay List */}
-              {overlays.length > 0 ? (
-                <div className="space-y-2">
-                  {overlays.map((overlay, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-[#111] rounded-lg p-3 flex items-start justify-between gap-3 hover:bg-[#151515] transition-all"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white font-medium truncate mb-1">{overlay.text}</p>
-                        <div className="flex items-center gap-3 text-xs text-gray-500">
-                          <span>⏱ {formatTime(overlay.start_time)} - {formatTime(overlay.end_time)}</span>
-                          <span>•</span>
-                          <span>📍 {overlay.position}</span>
-                          <span>•</span>
-                          <span>🎨 {overlay.style}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-1 flex-shrink-0">
-                        <button
-                          onClick={() => openOverlayModal(overlay, idx)}
-                          disabled={savingOverlays}
-                          className="px-2 py-1 text-xs text-gray-400 hover:text-white transition-all disabled:opacity-50"
-                          title="Edit"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => handleDeleteOverlay(idx)}
-                          disabled={savingOverlays}
-                          className="px-2 py-1 text-xs text-gray-400 hover:text-red-400 transition-all disabled:opacity-50"
-                          title="Delete"
-                        >
-                          🗑
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500 text-center py-4">
-                  No text overlays yet. Click "Add Text" or "Auto-generate" to create overlays.
-                </p>
-              )}
+            {/* Text Overlays */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-semibold text-white">Text Overlays ({overlays.length})</h3>
+                {overlays.slice(0, 3).map((overlay, idx) => (
+                  <span key={idx} className="text-xs text-gray-500 bg-white/5 px-2 py-1 rounded">
+                    {overlay.text.slice(0, 20)}...
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAutoGenerateOverlays}
+                  disabled={autoGenerating || savingOverlays}
+                  className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-xs font-medium transition-all duration-200 disabled:opacity-50"
+                >
+                  {autoGenerating ? "⏳" : "✨"} Auto-generate
+                </button>
+                <button
+                  onClick={() => openOverlayModal()}
+                  disabled={savingOverlays}
+                  className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-lg text-xs font-medium transition-all duration-200 disabled:opacity-50"
+                >
+                  + Add Text
+                </button>
+              </div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="aspect-video bg-[#111] rounded-2xl border border-white/5 flex items-center justify-center mb-8">
-          {project.status === "error" ? (
-            <div className="text-center">
-              <div className="text-5xl mb-3">❌</div>
-              <p className="text-red-400 text-sm">{project.current_step || "Processing failed"}</p>
-            </div>
-          ) : isProcessing(project.status) || refining ? (
-            <div className="text-center w-full max-w-md px-8">
-              <div className="text-5xl mb-4 animate-pulse">⚙️</div>
-              <p className="text-white font-medium mb-1">
-                {refining ? "Re-editing..." : project.current_step || "Processing..."}
-              </p>
-              <p className="text-xs text-gray-500 mb-4">{Math.round(project.progress || 0)}%</p>
-              <div className="h-2 bg-white/5 rounded-full overflow-hidden mb-6">
-                <div
-                  className="h-full bg-accent rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(project.progress || 0, 100)}%` }}
-                />
+        /* Processing State - Fullscreen */
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="w-full max-w-md">
+            {project.status === "error" ? (
+              <div className="text-center">
+                <div className="text-6xl mb-4">❌</div>
+                <p className="text-red-400 text-sm">{project.current_step || "Processing failed"}</p>
               </div>
-              {/* Step indicators */}
-              <div className="flex justify-between text-xs">
-                {STEPS.map((step, i) => (
-                  <div key={step.key} className={`flex flex-col items-center gap-1 ${i <= stepIdx ? "text-accent" : "text-gray-600"}`}>
-                    <div className={`w-3 h-3 rounded-full border-2 ${i < stepIdx ? "bg-accent border-accent" : i === stepIdx ? "border-accent" : "border-gray-600"}`} />
-                    <span className="text-[10px]">{step.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="text-center">
-              <div className="text-6xl mb-3">▶</div>
-              <p className="text-sm text-gray-500">Ready to process</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Clip Timeline */}
-      {decisions.length > 0 && (
-        <div className="mb-4 min-w-0">
-          <h2 className="text-base font-semibold text-white mb-4">Clip Timeline</h2>
-          <div className="relative">
-            {/* Left scroll arrow */}
-            <button
-              onClick={() => {
-                const container = document.getElementById('editor-clip-timeline');
-                if (container) container.scrollBy({ left: -200, behavior: 'smooth' });
-              }}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl"
-              title="Scroll left"
-            >
-              ←
-            </button>
-            
-            {/* Right scroll arrow */}
-            <button
-              onClick={() => {
-                const container = document.getElementById('editor-clip-timeline');
-                if (container) container.scrollBy({ left: 200, behavior: 'smooth' });
-              }}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl"
-              title="Scroll right"
-            >
-              →
-            </button>
-            
-            <div id="editor-clip-timeline" className="flex gap-3 overflow-x-auto pb-3 max-w-full scroll-smooth">
-              {decisions
-                .sort((a, b) => a.sequence_order - b.sequence_order)
-                .map((clip) => {
-                  // Try to find the clip in timeline data for more info
-                  const timelineClip = timelineClips.find(c => c.clip_id === clip.id || c.action_id === clip.action_id);
-                  const clipTag = getClipTag(timelineClip || clip);
-                  
-                  return (
-                    <div
-                      key={clip.id}
-                      className="flex-shrink-0 w-44 bg-surface rounded-xl border border-white/5 hover:border-accent/30 transition-all duration-200 overflow-hidden group cursor-pointer"
-                    >
-                      <div className="aspect-video bg-[#141414] flex items-center justify-center relative group-hover:bg-[#1a1a1a] transition-all duration-200">
-                        {/* Try to load thumbnail, fallback to icon */}
-                        <img
-                          src={api.getClipThumbnailUrl(id, clip.id)}
-                          alt={clip.reason || "Clip"}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                          onError={(e) => {
-                            // Hide image and show fallback icon on error
-                            e.currentTarget.style.display = 'none';
-                            const fallback = e.currentTarget.nextElementSibling;
-                            if (fallback) (fallback as HTMLElement).style.display = 'block';
-                          }}
-                        />
-                        <span className="text-2xl absolute" style={{ display: 'none' }}>🎞</span>
-                        
-                        {/* Clip Tag Badge */}
-                        {clipTag && (
-                          <div className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 ${clipTag.color}`}>
-                            <span>{clipTag.icon}</span>
-                            <span>{clipTag.label}</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-accent font-semibold">Clip {clip.sequence_order + 1}</span>
-                          <span className="text-xs text-gray-500">
-                            {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-300 truncate">{clip.reason || clip.filename || "—"}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Export Section - Moved to bottom after all editing tools */}
-      {project.status === "completed" && project.output_path && (
-        <div className="max-w-2xl mx-auto mt-8 mb-6">
-          <div className="bg-surface border border-white/5 rounded-xl p-6">
-            <h3 className="text-sm font-semibold text-white mb-4 text-center">Ready to Export</h3>
-            
-            {/* Export Format Selector */}
-            <div className="mb-4">
-              <label className="text-xs text-gray-500 block mb-2 text-center">Export Format</label>
-              <div className="flex gap-2 justify-center">
-                {[
-                  { value: "9:16", label: "9:16", icon: "📱", desc: "Vertical" },
-                  { value: "1:1", label: "1:1", icon: "⬜", desc: "Square" },
-                  { value: "16:9", label: "16:9", icon: "🖥", desc: "Landscape" },
-                ].map((format) => {
-                  const isCurrentFormat = project?.aspect_ratio === format.value;
-                  const isSelected = selectedExportFormat === format.value;
-                  return (
-                    <button
-                      key={format.value}
-                      onClick={() => setSelectedExportFormat(isSelected ? null : format.value)}
-                      disabled={hdRendering}
-                      className={`px-4 py-2.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2 ${
-                        isSelected 
-                          ? "bg-accent text-white" 
-                          : isCurrentFormat
-                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                          : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
-                      } disabled:opacity-50`}
-                      title={isCurrentFormat ? `${format.desc} (Original)` : format.desc}
-                    >
-                      <span>{format.icon}</span>
-                      <span>{format.label}</span>
-                      {isCurrentFormat && <span className="text-[9px]">✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              {selectedExportFormat && selectedExportFormat !== project?.aspect_ratio && (
-                <p className="text-xs text-orange-400 mt-2 text-center">
-                  ⚠️ Re-exporting in {selectedExportFormat} format (not implemented yet - coming soon!)
+            ) : isProcessing(project.status) ? (
+              <div className="text-center">
+                <div className="text-6xl mb-4 animate-pulse">⚙️</div>
+                <p className="text-white font-medium mb-2">
+                  {project.current_step || "Processing..."}
                 </p>
-              )}
-            </div>
-
-            {/* Primary Action: Export */}
-            <div className="text-center">
-              <button
-                onClick={handleDownload}
-                className="bg-accent hover:bg-accent-hover text-white px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/30"
-              >
-                ⬇️ Export Video
-              </button>
-            </div>
+                <p className="text-sm text-gray-500 mb-4">{Math.round(project.progress || 0)}%</p>
+                <div className="h-2 bg-white/5 rounded-full overflow-hidden mb-6">
+                  <div
+                    className="h-full bg-accent rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(project.progress || 0, 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs px-4">
+                  {STEPS.map((step, i) => (
+                    <div key={step.key} className={`flex flex-col items-center gap-1 ${i <= stepIdx ? "text-accent" : "text-gray-600"}`}>
+                      <div className={`w-2.5 h-2.5 rounded-full border-2 ${i < stepIdx ? "bg-accent border-accent" : i === stepIdx ? "border-accent" : "border-gray-600"}`} />
+                      <span className="text-[9px]">{step.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center">
+                <div className="text-6xl mb-4">▶</div>
+                <p className="text-sm text-gray-500">Ready to process</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1065,7 +1279,6 @@ export default function ProjectPage() {
             className="bg-[#111] border border-white/10 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
             <div className="sticky top-0 bg-[#111] border-b border-white/10 px-6 py-4 flex items-center justify-between">
               <h2 className="text-xl font-bold text-white">
                 {editingOverlay ? "Edit Text Overlay" : "Add Text Overlay"}
@@ -1079,9 +1292,7 @@ export default function ProjectPage() {
               </button>
             </div>
 
-            {/* Modal Content */}
             <div className="p-6 space-y-6">
-              {/* Text Input */}
               <div>
                 <label className="text-sm text-gray-400 block mb-2">Text</label>
                 <textarea
@@ -1094,7 +1305,6 @@ export default function ProjectPage() {
                 />
               </div>
 
-              {/* Time Inputs */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm text-gray-400 block mb-2">Start Time (seconds)</label>
@@ -1122,14 +1332,13 @@ export default function ProjectPage() {
                 </div>
               </div>
 
-              {/* Style Picker */}
               <div>
                 <label className="text-sm text-gray-400 block mb-2">Style</label>
                 <div className="flex gap-2">
                   {[
-                    { value: "bold-white", label: "Bold White", desc: "White text with black outline" },
-                    { value: "subtitle-bar", label: "Subtitle Bar", desc: "White text on black background" },
-                    { value: "minimal", label: "Minimal", desc: "Small text with subtle shadow" },
+                    { value: "bold-white", label: "Bold White" },
+                    { value: "subtitle-bar", label: "Subtitle Bar" },
+                    { value: "minimal", label: "Minimal" },
                   ].map((style) => (
                     <button
                       key={style.value}
@@ -1140,7 +1349,6 @@ export default function ProjectPage() {
                           ? "bg-accent text-white"
                           : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
                       } disabled:opacity-50`}
-                      title={style.desc}
                     >
                       {style.label}
                     </button>
@@ -1148,7 +1356,6 @@ export default function ProjectPage() {
                 </div>
               </div>
 
-              {/* Position Picker */}
               <div>
                 <label className="text-sm text-gray-400 block mb-2">Position</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -1175,7 +1382,6 @@ export default function ProjectPage() {
                 </div>
               </div>
 
-              {/* Font Size */}
               <div>
                 <label className="text-sm text-gray-400 block mb-2">
                   Font Size: {overlayFontSize}px
@@ -1191,24 +1397,23 @@ export default function ProjectPage() {
                   className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-accent disabled:opacity-50"
                 />
                 <div className="flex justify-between text-xs text-gray-600 mt-1">
-                  <span>24px (Small)</span>
-                  <span>72px (Large)</span>
+                  <span>24px</span>
+                  <span>72px</span>
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex items-center gap-3 pt-4 border-t border-white/10">
                 <button
                   onClick={handleSaveOverlay}
                   disabled={savingOverlays || !overlayText.trim()}
-                  className="bg-accent hover:bg-accent-hover text-white px-8 py-3 rounded-xl font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-accent hover:bg-accent-hover text-white px-8 py-3 rounded-xl font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/20 disabled:opacity-50"
                 >
                   {savingOverlays ? "⏳ Saving..." : editingOverlay ? "💾 Update" : "➕ Add"}
                 </button>
                 <button
                   onClick={closeOverlayModal}
                   disabled={savingOverlays}
-                  className="text-sm text-gray-500 hover:text-white transition-all duration-200 disabled:opacity-50"
+                  className="px-8 py-3 border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white rounded-xl font-medium text-sm transition-all duration-200 disabled:opacity-50"
                 >
                   Cancel
                 </button>
