@@ -1,6 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { 
+  Sparkles, 
+  ChevronUp, 
+  ChevronDown, 
+  Film, 
+  Clock, 
+  CheckCircle2, 
+  Target,
+  CookingPot, 
+  GitBranch, 
+  Clapperboard, 
+  Star, 
+  Check, 
+  AlertTriangle, 
+  Info,
+  Minimize2
+} from "lucide-react";
 
 interface EditSummaryCardProps {
   editorNotes: string;
@@ -109,7 +126,7 @@ export function EditSummaryCard({
           className="bg-accent/5 border border-accent/20 rounded-lg p-3 flex items-center justify-between cursor-pointer hover:bg-accent/10 transition-all duration-200"
         >
           <div className="flex items-center gap-3">
-            <span className="text-2xl">✨</span>
+            <Sparkles className="w-6 h-6 text-accent" />
             <div>
               <p className="text-sm font-semibold text-white">
                 {insights?.recipe || dishName || "Your Edit is Ready"}
@@ -119,11 +136,7 @@ export function EditSummaryCard({
               </p>
             </div>
           </div>
-          <button className="text-gray-500 hover:text-white">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+          <ChevronDown className="w-5 h-5 text-gray-500 hover:text-white" />
         </div>
       </div>
     );
@@ -141,14 +154,12 @@ export function EditSummaryCard({
           className="absolute top-4 right-4 text-gray-500 hover:text-white transition-all duration-200"
           title="Minimize"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-          </svg>
+          <ChevronUp className="w-5 h-5" />
         </button>
 
         {/* Header */}
         <div className="flex items-start gap-3 mb-5 relative z-10">
-          <span className="text-4xl">✨</span>
+          <Sparkles className="w-9 h-9 text-accent" />
           <div>
             <h2 className="text-xl font-bold text-white mb-1">Your Edit is Ready!</h2>
             <p className="text-sm text-gray-400">
@@ -169,7 +180,7 @@ export function EditSummaryCard({
           </div>
           <div className="bg-white/5 rounded-lg p-3 text-center border border-white/10">
             <p className="text-2xl font-bold text-green-400">
-              {heroMoment ? "🎯" : "✓"}
+              {heroMoment ? <Target className="w-7 h-7 text-green-400 mx-auto" /> : <CheckCircle2 className="w-7 h-7 text-green-400 mx-auto" />}
             </p>
             <p className="text-xs text-gray-400 mt-1">Story Complete</p>
           </div>
@@ -180,7 +191,7 @@ export function EditSummaryCard({
           {/* Recipe/Dish */}
           {insights?.recipe && (
             <div className="flex items-start gap-2">
-              <span className="text-accent font-semibold text-sm">🍳 Recipe:</span>
+              <span className="text-accent font-semibold text-sm flex items-center gap-1"><CookingPot className="w-4 h-4 inline" /> Recipe:</span>
               <span className="text-sm text-gray-300">{insights.recipe}</span>
             </div>
           )}
@@ -188,7 +199,7 @@ export function EditSummaryCard({
           {/* Story Flow */}
           {insights?.flow && (
             <div className="flex items-start gap-2">
-              <span className="text-accent font-semibold text-sm">📖 Flow:</span>
+              <span className="text-accent font-semibold text-sm flex items-center gap-1"><GitBranch className="w-4 h-4 inline" /> Flow:</span>
               <span className="text-sm text-gray-300">{insights.flow}</span>
             </div>
           )}
@@ -196,7 +207,7 @@ export function EditSummaryCard({
           {/* Key Moments */}
           {insights?.keyMoments && insights.keyMoments.length > 0 && (
             <div>
-              <span className="text-accent font-semibold text-sm block mb-2">🎬 Key Moments:</span>
+              <span className="text-accent font-semibold text-sm flex items-center gap-1 mb-2"><Clapperboard className="w-4 h-4 inline" /> Key Moments:</span>
               <ul className="space-y-1 ml-6">
                 {insights.keyMoments.slice(0, 3).map((moment, idx) => (
                   <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
@@ -212,7 +223,7 @@ export function EditSummaryCard({
           {heroMoment && (
             <div className="mt-4 bg-accent/10 border border-accent/30 rounded-lg p-3">
               <div className="flex items-start gap-2">
-                <span className="text-xl">🌟</span>
+                <Star className="w-5 h-5 text-accent fill-accent" />
                 <div>
                   <p className="text-sm font-semibold text-accent mb-1">Best Moment</p>
                   <p className="text-xs text-gray-300">{heroMoment}</p>
@@ -226,21 +237,21 @@ export function EditSummaryCard({
             <div className="flex items-center gap-2 text-xs mt-4">
               {totalDuration >= targetDuration - 5 && totalDuration <= targetDuration + 5 ? (
                 <>
-                  <span className="text-green-400">✓</span>
+                  <Check className="w-4 h-4 text-green-400" />
                   <span className="text-gray-400">
                     Perfect duration ({formatTime(totalDuration)} / {formatTime(targetDuration)} target)
                   </span>
                 </>
               ) : totalDuration > targetDuration + 5 ? (
                 <>
-                  <span className="text-yellow-400">⚠</span>
+                  <AlertTriangle className="w-4 h-4 text-yellow-400" />
                   <span className="text-gray-400">
                     Slightly over target ({formatTime(totalDuration)} / {formatTime(targetDuration)})
                   </span>
                 </>
               ) : (
                 <>
-                  <span className="text-blue-400">ℹ</span>
+                  <Info className="w-4 h-4 text-blue-400" />
                   <span className="text-gray-400">
                     Under target ({formatTime(totalDuration)} / {formatTime(targetDuration)})
                   </span>
