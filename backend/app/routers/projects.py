@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import shutil
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.config import settings
 from app.models.project import ProjectCreate, ProjectStatus, ProjectUpdate
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -110,6 +113,15 @@ async def delete_project(project_id: str, request: Request) -> None:
     await db.video_clips.delete_many({"project_id": project_id})
     await db.video_analyses.delete_many({"project_id": project_id})
     await db.edit_decisions.delete_many({"project_id": project_id})
+
+    # Clean up files on disk
+    upload_dir = Path(settings.upload_dir) / project_id
+    if upload_dir.exists():
+        shutil.rmtree(upload_dir, ignore_errors=True)
+    output_dir = Path(settings.output_dir)
+    if output_dir.exists():
+        for f in output_dir.glob(f"{project_id}*"):
+            f.unlink(missing_ok=True)
 
 
 @router.get("/{project_id}/clips")
