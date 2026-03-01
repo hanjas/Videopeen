@@ -27,7 +27,12 @@ import {
   ArrowUpLeft,
   ArrowUp,
   ArrowDown,
-  Circle
+  Circle,
+  Bot,
+  XCircle,
+  Play,
+  Check,
+  AlertTriangle
 } from "lucide-react";
 
 const STEPS = [
@@ -694,11 +699,11 @@ export default function ProjectPage() {
   const durationPct = targetDuration > 0 ? Math.min((totalDuration / targetDuration) * 100, 150) : 0;
   const getDurationStatus = () => {
     if (totalDuration <= targetDuration + 5) {
-      return { color: "bg-green-500", text: "text-green-400", icon: "✓" };
+      return { color: "bg-green-500", text: "text-green-400", Icon: Check };
     } else if (totalDuration <= targetDuration + 10) {
-      return { color: "bg-yellow-500", text: "text-yellow-400", icon: "⚠" };
+      return { color: "bg-yellow-500", text: "text-yellow-400", Icon: AlertTriangle };
     } else {
-      return { color: "bg-red-500", text: "text-red-400", icon: "✕" };
+      return { color: "bg-red-500", text: "text-red-400", Icon: X };
     }
   };
   const durationStatus = getDurationStatus();
@@ -817,7 +822,7 @@ export default function ProjectPage() {
                       >
                         <format.Icon size={14} />
                         <span>{format.label}</span>
-                        {isCurrentFormat && <span className="text-[9px]">✓</span>}
+                        {isCurrentFormat && <Check size={12} />}
                       </button>
                     );
                   })}
@@ -1014,8 +1019,8 @@ export default function ProjectPage() {
                     <div className="flex-shrink-0 mb-4">
                       <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
                         <span>Duration</span>
-                        <span className={durationStatus.text}>
-                          {durationStatus.icon} {formatTime(totalDuration)} / {formatTime(targetDuration)}
+                        <span className={`${durationStatus.text} flex items-center gap-1.5`}>
+                          <durationStatus.Icon size={14} /> {formatTime(totalDuration)} / {formatTime(targetDuration)}
                         </span>
                       </div>
                       <div className="h-2 bg-white/5 rounded-full overflow-hidden">
@@ -1030,7 +1035,7 @@ export default function ProjectPage() {
                     {editorNotes && (
                       <div className="flex-shrink-0 bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3 mb-4">
                         <div className="flex items-start gap-2">
-                          <span className="text-lg">🤖</span>
+                          <Bot size={18} className="text-yellow-400 flex-shrink-0 mt-0.5" />
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-semibold text-yellow-400 mb-1">AI Notes</p>
                             <p className="text-xs text-gray-400 line-clamp-3">{editorNotes}</p>
@@ -1268,7 +1273,9 @@ export default function ProjectPage() {
           <div className="w-full max-w-md">
             {project.status === "error" ? (
               <div className="text-center">
-                <div className="text-6xl mb-4">❌</div>
+                <div className="mb-4 flex justify-center text-red-400">
+                  <XCircle size={64} />
+                </div>
                 <p className="text-red-400 text-sm">{project.current_step || "Processing failed"}</p>
               </div>
             ) : isProcessing(project.status) ? (
@@ -1295,7 +1302,9 @@ export default function ProjectPage() {
               </div>
             ) : (
               <div className="text-center">
-                <div className="text-6xl mb-4">▶</div>
+                <div className="mb-4 flex justify-center text-gray-600">
+                  <Play size={64} />
+                </div>
                 <p className="text-sm text-gray-500">Ready to process</p>
               </div>
             )}
