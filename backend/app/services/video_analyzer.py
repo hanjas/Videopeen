@@ -280,17 +280,27 @@ async def detect_actions_for_video(
     
     await asyncio.gather(*[process_batch(i) for i in range(n_batches)])
     
-    # Merge all actions
+    # Merge all actions, fix zero-duration clips
     all_actions = []
     action_id = 0
+    zero_dur_fixed = 0
     for result in results:
         if result:
             for action in result.get("actions", []):
                 action["source_video"] = video_name
+                start = action.get("start_time", 0)
+                end = action.get("end_time", 0)
+                # Fix zero-duration actions: expand to at least 2 seconds
+                if end <= start:
+                    action["start_time"] = max(0, start - 1.0)
+                    action["end_time"] = start + 1.0
+                    zero_dur_fixed += 1
                 action["action_id"] = action_id
                 action_id += 1
                 all_actions.append(action)
     
+    if zero_dur_fixed:
+        logger.info("Fixed %d zero-duration actions (expanded to 2s) in %s", zero_dur_fixed, video_name)
     logger.info("Detected %d actions in %s", len(all_actions), video_name)
     return all_actions
 

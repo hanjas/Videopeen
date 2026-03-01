@@ -355,6 +355,10 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
                     thumb_path = fr.frame_paths[closest_idx]
                     break
 
+            # Skip zero-duration actions
+            if a_end <= a_start:
+                continue
+
             clip_pool.append({
                 "clip_id": str(uuid.uuid4()),
                 "source_video": source_name,
