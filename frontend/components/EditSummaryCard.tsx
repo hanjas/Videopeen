@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { 
   Sparkles, 
   ChevronUp, 
@@ -77,7 +77,7 @@ export function EditSummaryCard({
     return insights;
   };
 
-  const insights = parseNotes();
+  const insights = useMemo(() => parseNotes(), [editorNotes]);
 
   // Find the best/hero moment from editor notes
   const findHeroMoment = (): string | null => {
@@ -106,7 +106,7 @@ export function EditSummaryCard({
     return null;
   };
 
-  const heroMoment = findHeroMoment();
+  const heroMoment = useMemo(() => findHeroMoment(), [editorNotes]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);

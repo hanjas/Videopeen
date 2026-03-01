@@ -112,6 +112,7 @@ async def delete_project(project_id: str, request: Request) -> None:
     # Clean up related collections
     await db.video_clips.delete_many({"project_id": project_id})
     await db.video_analyses.delete_many({"project_id": project_id})
+    await db.edit_plans.delete_many({"project_id": project_id})
     await db.edit_decisions.delete_many({"project_id": project_id})
 
     # Clean up files on disk

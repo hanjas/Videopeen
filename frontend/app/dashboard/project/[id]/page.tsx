@@ -792,13 +792,15 @@ export default function ProjectPage() {
                     </div>
                   )}
 
-                  <video
-                    key={`${videoKey}-${proxyVideoUrl || project.output_path}`}
-                    src={proxyVideoUrl || api.getVideoUrl(project.output_path)}
-                    controls
-                    className="w-full rounded-xl border border-white/10 bg-black"
-                    style={{ maxHeight: "60vh" }}
-                  />
+                  {(proxyVideoUrl || project.output_path) && (
+                    <video
+                      key={`${videoKey}-${proxyVideoUrl || project.output_path}`}
+                      src={proxyVideoUrl || api.getVideoUrl(project.output_path)}
+                      controls
+                      className="w-full rounded-xl border border-white/10 bg-black"
+                      style={{ maxHeight: "60vh" }}
+                    />
+                  )}
                 </div>
 
                 {/* Aspect Ratio Selector */}
