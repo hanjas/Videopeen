@@ -1191,30 +1191,32 @@ export default function ProjectPage() {
                   </button>
 
                   <div id="bottom-clip-timeline" className="flex gap-2 overflow-x-auto pb-2 px-8 scroll-smooth">
-                    {decisions
-                      .sort((a, b) => a.sequence_order - b.sequence_order)
-                      .map((clip) => {
-                        const timelineClip = timelineClips.find(c => c.clip_id === clip.id);
-                        const clipTag = getClipTag(timelineClip || clip);
+                    {(timelineClips.length > 0 ? timelineClips : decisions)
+                      .sort((a: any, b: any) => (a.order ?? a.sequence_order ?? 0) - (b.order ?? b.sequence_order ?? 0))
+                      .map((clip: any, idx: number) => {
+                        const clipId = clip.clip_id || clip.id;
+                        const clipTag = getClipTag(clip);
 
                         return (
                           <div
-                            key={clip.id}
+                            key={clipId || `clip-${idx}`}
                             className="flex-shrink-0 w-32 bg-surface rounded-lg border border-white/5 hover:border-accent/30 transition-all duration-200 overflow-hidden group cursor-pointer"
                           >
                             <div className="aspect-video bg-[#141414] flex items-center justify-center relative">
-                              <img
-                                src={api.getClipThumbnailUrl(id, clip.id)}
-                                alt={clip.reason || "Clip"}
-                                className="w-full h-full object-cover"
-                                loading="lazy"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                  const fallback = e.currentTarget.nextElementSibling;
-                                  if (fallback) (fallback as HTMLElement).style.display = 'block';
-                                }}
-                              />
-                              <span className="absolute text-gray-600" style={{ display: 'none' }}><Film size={20} /></span>
+                              {clipId ? (
+                                <img
+                                  src={api.getClipThumbnailUrl(id, clipId)}
+                                  alt={clip.reason || clip.description || "Clip"}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const fallback = e.currentTarget.nextElementSibling;
+                                    if (fallback) (fallback as HTMLElement).style.display = 'block';
+                                  }}
+                                />
+                              ) : null}
+                              <span className="absolute text-gray-600" style={{ display: clipId ? 'none' : 'block' }}><Film size={20} /></span>
 
                               {clipTag && (
                                 <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border flex items-center gap-0.5 ${clipTag.color}`}>
@@ -1224,8 +1226,8 @@ export default function ProjectPage() {
                             </div>
                             <div className="p-2">
                               <div className="flex items-center justify-between">
-                                <span className="text-[10px] text-accent font-semibold">#{clip.sequence_order + 1}</span>
-                                <span className="text-[9px] text-gray-600">{formatTime(clip.end_time - clip.start_time)}</span>
+                                <span className="text-[10px] text-accent font-semibold">#{(clip.order ?? clip.sequence_order ?? idx) + 1}</span>
+                                <span className="text-[9px] text-gray-600">{formatTime((clip.end_time - clip.start_time) / (clip.speed_factor || 1))}</span>
                               </div>
                             </div>
                           </div>
