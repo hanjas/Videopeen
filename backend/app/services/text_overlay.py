@@ -211,6 +211,22 @@ def apply_text_overlays(
     # Chain all drawtext filters with commas
     vf_filter = ",".join(filter_parts)
     
+    # Check if drawtext filter is available (requires libfreetype)
+    check = subprocess.run(
+        ["ffmpeg", "-filters"],
+        capture_output=True, text=True, timeout=10,
+    )
+    if "drawtext" not in check.stdout:
+        logger.warning(
+            "FFmpeg drawtext filter not available (missing libfreetype). "
+            "Skipping %d text overlays. Install ffmpeg with freetype: "
+            "brew install ffmpeg --with-freetype or brew reinstall ffmpeg",
+            len(filter_parts),
+        )
+        import shutil
+        shutil.copy2(input_path, output_path)
+        return output_path
+
     # Build ffmpeg command
     # Apply overlays with hardware encoding for speed
     cmd = [
@@ -232,8 +248,8 @@ def apply_text_overlays(
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         
         if result.returncode != 0:
-            logger.error("FFmpeg overlay failed: %s", result.stderr[:500])
-            raise RuntimeError(f"FFmpeg overlay failed: {result.stderr[:200]}")
+            logger.error("FFmpeg overlay failed (full stderr): %s", result.stderr)
+            raise RuntimeError(f"FFmpeg overlay failed: {result.stderr[-500:]}")
         
         if not os.path.exists(output_path):
             raise RuntimeError("Output file was not created")
