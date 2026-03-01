@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { api, Project, EditDecision } from "@/lib/api";
+import { api, Project, EditDecision, TextOverlay } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import { EditSummaryCard } from "@/components/EditSummaryCard";
 import {
@@ -101,9 +101,9 @@ export default function ProjectPage() {
   const [videoKey, setVideoKey] = useState(0);
 
   // Text overlay state
-  const [overlays, setOverlays] = useState<api.TextOverlay[]>([]);
+  const [overlays, setOverlays] = useState<TextOverlay[]>([]);
   const [overlayModalOpen, setOverlayModalOpen] = useState(false);
-  const [editingOverlay, setEditingOverlay] = useState<api.TextOverlay | null>(null);
+  const [editingOverlay, setEditingOverlay] = useState<TextOverlay | null>(null);
   const [editingOverlayIndex, setEditingOverlayIndex] = useState<number | null>(null);
   const [overlayText, setOverlayText] = useState("");
   const [overlayStartTime, setOverlayStartTime] = useState(0);
@@ -465,7 +465,7 @@ export default function ProjectPage() {
   };
 
   // Text overlay functions
-  const openOverlayModal = (overlay?: api.TextOverlay, index?: number) => {
+  const openOverlayModal = (overlay?: TextOverlay, index?: number) => {
     if (overlay && index !== undefined) {
       setEditingOverlay(overlay);
       setEditingOverlayIndex(index);
@@ -505,7 +505,7 @@ export default function ProjectPage() {
       return;
     }
 
-    const newOverlay: api.TextOverlay = {
+    const newOverlay: TextOverlay = {
       text: overlayText.trim(),
       start_time: overlayStartTime,
       end_time: overlayEndTime,
@@ -514,7 +514,7 @@ export default function ProjectPage() {
       font_size: overlayFontSize,
     };
 
-    let updatedOverlays: api.TextOverlay[];
+    let updatedOverlays: TextOverlay[];
 
     if (editingOverlayIndex !== null) {
       updatedOverlays = [...overlays];
@@ -1189,7 +1189,7 @@ export default function ProjectPage() {
                     {decisions
                       .sort((a, b) => a.sequence_order - b.sequence_order)
                       .map((clip) => {
-                        const timelineClip = timelineClips.find(c => c.clip_id === clip.id || c.action_id === clip.action_id);
+                        const timelineClip = timelineClips.find(c => c.clip_id === clip.id);
                         const clipTag = getClipTag(timelineClip || clip);
 
                         return (

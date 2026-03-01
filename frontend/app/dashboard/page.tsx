@@ -129,7 +129,7 @@ export default function DashboardPage() {
 
       // 1. Create project
       const project = await api.createProject({
-        name: name.trim() || undefined,
+        name: name.trim() || "Untitled Project",
         output_duration: durationSeconds,
         instructions: style,
         aspect_ratio: aspectRatio,
