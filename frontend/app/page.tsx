@@ -3,6 +3,7 @@ import Link from "next/link";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { Sparkles, Download, Upload, Zap } from "lucide-react";
 
 export default function LandingPage() {
   const { data: session, status } = useSession();
@@ -38,8 +39,8 @@ export default function LandingPage() {
 
       {/* Hero */}
       <section className="max-w-4xl mx-auto text-center pt-24 pb-20 px-8">
-        <div className="inline-block mb-6 px-4 py-1.5 rounded-full border border-white/10 text-xs text-gray-400 bg-white/5">
-          ✨ Now in public beta
+        <div className="inline-flex items-center gap-1.5 mb-6 px-4 py-1.5 rounded-full border border-white/10 text-xs text-gray-400 bg-white/5">
+          <Sparkles size={14} /> Now in public beta
         </div>
         <h1 className="text-5xl md:text-6xl font-bold text-white leading-tight mb-6">
           AI Cooking Video
@@ -69,15 +70,15 @@ export default function LandingPage() {
         <h2 className="text-2xl font-bold text-white text-center mb-14">How it works</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {[
-            { step: "1", icon: "📤", title: "Upload", desc: "Drop your raw cooking footage — any length, any format." },
-            { step: "2", icon: "🤖", title: "AI Edits", desc: "Our AI detects key moments, adds cuts, transitions, and pacing." },
-            { step: "3", icon: "⬇️", title: "Download", desc: "Get a polished short-form video ready for TikTok, Reels, or Shorts." },
+            { step: "1", Icon: Upload, title: "Upload", desc: "Drop your raw cooking footage — any length, any format." },
+            { step: "2", Icon: Zap, title: "AI Edits", desc: "Our AI detects key moments, adds cuts, transitions, and pacing." },
+            { step: "3", Icon: Download, title: "Download", desc: "Get a polished short-form video ready for TikTok, Reels, or Shorts." },
           ].map((item) => (
             <div
               key={item.step}
               className="bg-surface rounded-2xl p-8 text-center hover:bg-surface-light transition-all duration-200 border border-white/5 hover:border-white/10"
             >
-              <div className="text-4xl mb-4">{item.icon}</div>
+              <div className="mb-4 flex justify-center text-accent"><item.Icon size={40} /></div>
               <div className="text-xs text-accent font-semibold mb-2">STEP {item.step}</div>
               <h3 className="text-lg font-semibold text-white mb-2">{item.title}</h3>
               <p className="text-sm text-gray-400 leading-relaxed">{item.desc}</p>

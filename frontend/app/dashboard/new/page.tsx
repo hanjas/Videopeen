@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -13,7 +14,7 @@ export default function NewProjectPage() {
   return (
     <div className="flex items-center justify-center min-h-[50vh]">
       <div className="text-center">
-        <div className="text-4xl mb-4">🔄</div>
+        <div className="mb-4 flex justify-center text-gray-500"><Loader2 size={40} className="animate-spin" /></div>
         <p className="text-gray-500">Redirecting to dashboard...</p>
       </div>
     </div>

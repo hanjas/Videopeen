@@ -5,6 +5,15 @@ import Link from "next/link";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/Toast";
+import {
+  ArrowLeft,
+  ArrowRight,
+  X,
+  Save,
+  Clapperboard,
+  Sparkles,
+  Loader2
+} from "lucide-react";
 
 interface Clip {
   clip_id: string;
@@ -242,8 +251,8 @@ export default function ReviewPage() {
     return (
       <div className="text-center py-20">
         <p className="text-red-400">{error}</p>
-        <Link href={`/dashboard/project/${id}`} className="text-sm text-accent mt-4 inline-block">
-          ← Back to Project
+        <Link href={`/dashboard/project/${id}`} className="text-sm text-accent mt-4 inline-flex items-center gap-1.5">
+          <ArrowLeft size={14} /> Back to Project
         </Link>
       </div>
     );
@@ -281,20 +290,28 @@ export default function ReviewPage() {
             disabled={saving}
             className="px-4 py-2.5 rounded-lg border border-white/10 text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200 disabled:opacity-50"
           >
-            {saving ? "Saving..." : "💾 Save"}
+            {saving ? (
+              <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Saving...</span>
+            ) : (
+              <span className="inline-flex items-center gap-2"><Save size={16} /> Save</span>
+            )}
           </button>
           <button
             onClick={handleConfirmRender}
             disabled={rendering || clips.length === 0}
             className="bg-accent hover:bg-accent-hover text-white px-6 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/20 disabled:opacity-50"
           >
-            {rendering ? "Starting..." : "🎬 Render Final"}
+            {rendering ? (
+              <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Starting...</span>
+            ) : (
+              <span className="inline-flex items-center gap-2"><Clapperboard size={16} /> Render Final</span>
+            )}
           </button>
           <Link
             href={`/dashboard/project/${id}`}
-            className="px-4 py-2.5 rounded-lg text-sm text-gray-500 hover:text-white transition-all duration-200"
+            className="px-4 py-2.5 rounded-lg text-sm text-gray-500 hover:text-white transition-all duration-200 inline-flex items-center gap-1.5"
           >
-            ← Back
+            <ArrowLeft size={16} /> Back
           </Link>
         </div>
       </div>
@@ -344,7 +361,7 @@ export default function ReviewPage() {
       {editorNotes && (
         <div className="mb-4 px-4 py-3 bg-yellow-500/5 rounded-lg border border-yellow-500/20 text-xs flex-shrink-0">
           <div className="font-semibold text-yellow-400 mb-2 flex items-center gap-1">
-            <span>✨</span> AI Analysis
+            <Sparkles size={14} /> AI Analysis
           </div>
           {formatAINotes(editorNotes)}
         </div>
@@ -363,7 +380,7 @@ export default function ReviewPage() {
             className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl"
             title="Scroll left"
           >
-            ←
+            <ArrowLeft size={16} />
           </button>
           
           {/* Right scroll arrow */}
@@ -375,7 +392,7 @@ export default function ReviewPage() {
             className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl"
             title="Scroll right"
           >
-            →
+            <ArrowRight size={16} />
           </button>
           
           <div id="review-clip-timeline" className="flex gap-3 overflow-x-auto pb-3 scroll-smooth">
@@ -430,7 +447,7 @@ export default function ReviewPage() {
                       onClick={(e) => { e.stopPropagation(); removeClip(clip.clip_id); }}
                       className="text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 text-xs"
                     >
-                      ✕
+                      <X size={14} />
                     </button>
                   </div>
                 </div>
@@ -465,8 +482,8 @@ export default function ReviewPage() {
             <h2 className="text-sm font-semibold text-white">
               Available Clips ({clipPool.length})
             </h2>
-            <button onClick={() => setShowPool(false)} className="text-xs text-gray-500 hover:text-white">
-              Hide ✕
+            <button onClick={() => setShowPool(false)} className="text-xs text-gray-500 hover:text-white inline-flex items-center gap-1">
+              Hide <X size={12} />
             </button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 pb-4">

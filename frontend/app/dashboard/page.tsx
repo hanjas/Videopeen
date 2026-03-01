@@ -4,6 +4,20 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { api, Project } from "@/lib/api";
 import { useToast } from "@/components/Toast";
+import { 
+  X, 
+  Clapperboard, 
+  Upload, 
+  Video, 
+  Sparkles, 
+  Smartphone, 
+  Square, 
+  Monitor, 
+  Loader2, 
+  Rocket,
+  Trash2,
+  FolderOpen
+} from "lucide-react";
 
 const statusColor: Record<string, string> = {
   created: "bg-gray-500",
@@ -227,7 +241,7 @@ export default function DashboardPage() {
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
           {error}
-          <button onClick={() => setError("")} className="ml-2 text-red-300 hover:text-white">✕</button>
+          <button onClick={() => setError("")} className="ml-2 text-red-300 hover:text-white"><X size={16} /></button>
         </div>
       )}
       <div className="flex items-center justify-between mb-8">
@@ -245,7 +259,7 @@ export default function DashboardPage() {
 
       {projects.length === 0 ? (
         <div className="text-center py-20">
-          <div className="text-5xl mb-4">🎬</div>
+          <div className="mb-4 flex justify-center text-gray-600"><Clapperboard size={48} /></div>
           <h2 className="text-lg font-semibold text-white mb-2">No projects yet</h2>
           <p className="text-sm text-gray-500 mb-6">Create your first AI-edited cooking video</p>
           <button
@@ -263,8 +277,8 @@ export default function DashboardPage() {
               onClick={() => router.push(`/dashboard/project/${p.id}`)}
               className="bg-surface rounded-xl border border-white/5 hover:border-white/10 transition-all duration-200 overflow-hidden group cursor-pointer relative"
             >
-              <div className="aspect-video bg-[#141414] flex items-center justify-center text-3xl group-hover:bg-[#1a1a1a] transition-all duration-200">
-                🎬
+              <div className="aspect-video bg-[#141414] flex items-center justify-center text-gray-600 group-hover:bg-[#1a1a1a] transition-all duration-200">
+                <Clapperboard size={32} />
               </div>
               <div className="p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -282,7 +296,7 @@ export default function DashboardPage() {
                     disabled={deleting === p.id}
                     className="text-gray-600 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100"
                   >
-                    {deleting === p.id ? "..." : "🗑"}
+                    {deleting === p.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                   </button>
                 </div>
                 {(p.status === "processing" || p.status === "analyzing" || p.status === "selecting" || p.status === "stitching") && (
@@ -320,7 +334,7 @@ export default function DashboardPage() {
                 disabled={generating}
                 className="text-gray-500 hover:text-white transition-all duration-200 disabled:opacity-50"
               >
-                ✕
+                <X size={20} />
               </button>
             </div>
 
@@ -334,7 +348,7 @@ export default function DashboardPage() {
                       <div className="text-red-400/80 text-sm">{modalError}</div>
                       <div className="text-red-400/60 text-xs mt-2">Click "Generate Video" to retry the upload.</div>
                     </div>
-                    <button onClick={() => setModalError("")} className="text-red-300 hover:text-white ml-3">✕</button>
+                    <button onClick={() => setModalError("")} className="text-red-300 hover:text-white ml-3"><X size={16} /></button>
                   </div>
                 </div>
               )}
@@ -374,7 +388,7 @@ export default function DashboardPage() {
                   dragging ? "border-accent bg-accent/5" : "border-white/10 hover:border-white/20 hover:bg-white/[0.02]"
                 } ${generating ? "opacity-50 pointer-events-none" : ""}`}
               >
-                <div className="text-4xl mb-3">📁</div>
+                <div className="mb-3 flex justify-center text-gray-500"><Upload size={40} /></div>
                 <p className="text-white font-medium mb-1">Drag & drop video files here</p>
                 <p className="text-sm text-gray-500">or <span className="text-accent hover:underline">browse files</span></p>
                 <p className="text-xs text-gray-600 mt-2">MP4, MOV, AVI — up to 5GB</p>
@@ -403,14 +417,14 @@ export default function DashboardPage() {
                       <div key={i} className="py-2 px-3 rounded-lg bg-white/5 hover:bg-white/[0.07] transition-all duration-200">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <span className="text-lg flex-shrink-0">🎥</span>
+                            <Video size={20} className="flex-shrink-0 text-gray-400" />
                             <span className="text-sm text-white truncate">{f.file.name}</span>
                           </div>
                           <div className="flex items-center gap-3 flex-shrink-0">
                             <span className="text-xs text-gray-500">{formatSize(f.file.size)}</span>
                             {f.uploaded && <span className="text-xs text-green-400 font-bold">✓</span>}
                             {!generating && (
-                              <button onClick={() => removeFile(i)} className="text-xs text-gray-600 hover:text-red-400 transition-colors">✕</button>
+                              <button onClick={() => removeFile(i)} className="text-xs text-gray-600 hover:text-red-400 transition-colors"><X size={14} /></button>
                             )}
                           </div>
                         </div>
@@ -434,7 +448,7 @@ export default function DashboardPage() {
                         {/* Error State */}
                         {f.error && (
                           <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 px-2 py-1.5 rounded mt-2">
-                            <span>✕</span>
+                            <X size={12} />
                             <span className="font-medium">{f.error}</span>
                           </div>
                         )}
@@ -454,7 +468,7 @@ export default function DashboardPage() {
               {/* AI Intelligence Note */}
               <div className="bg-gradient-to-r from-accent/10 to-purple-500/10 border border-accent/20 rounded-xl p-4 mb-6">
                 <div className="flex items-start gap-3">
-                  <span className="text-2xl">✨</span>
+                  <Sparkles size={24} className="text-accent flex-shrink-0" />
                   <div>
                     <h4 className="text-sm font-semibold text-white mb-1">AI Will Analyze Your Footage</h4>
                     <p className="text-xs text-gray-300">
@@ -471,9 +485,9 @@ export default function DashboardPage() {
                 {/* Aspect Ratio Selector - Simplified */}
                 <div className="flex gap-2">
                   {[
-                    { value: "9:16", label: "9:16", icon: "📱", desc: "Vertical" },
-                    { value: "1:1", label: "1:1", icon: "⬜", desc: "Square" },
-                    { value: "16:9", label: "16:9", icon: "🖥", desc: "Landscape" },
+                    { value: "9:16", label: "9:16", Icon: Smartphone, desc: "Vertical" },
+                    { value: "1:1", label: "1:1", Icon: Square, desc: "Square" },
+                    { value: "16:9", label: "16:9", Icon: Monitor, desc: "Landscape" },
                   ].map((format) => (
                     <button
                       key={format.value}
@@ -484,7 +498,7 @@ export default function DashboardPage() {
                       } disabled:opacity-50 flex flex-col items-center gap-1`}
                       title={format.desc}
                     >
-                      <span className="text-xl">{format.icon}</span>
+                      <format.Icon size={20} />
                       <span className="text-xs">{format.label}</span>
                     </button>
                   ))}
@@ -501,7 +515,11 @@ export default function DashboardPage() {
                   disabled={generating}
                   className="bg-accent hover:bg-accent-hover text-white px-8 py-3 rounded-xl font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {generating ? "⏳ Generating..." : "🚀 Generate Video"}
+                  {generating ? (
+                    <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Generating...</span>
+                  ) : (
+                    <span className="flex items-center gap-2"><Rocket size={16} /> Generate Video</span>
+                  )}
                 </button>
                 <button 
                   onClick={closeModal}

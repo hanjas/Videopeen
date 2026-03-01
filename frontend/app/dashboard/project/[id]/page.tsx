@@ -5,6 +5,30 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { api, Project, EditDecision } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import { EditSummaryCard } from "@/components/EditSummaryCard";
+import {
+  ArrowLeft,
+  ArrowRight,
+  X,
+  Save,
+  Download,
+  Clapperboard,
+  Settings,
+  MessageSquare,
+  Undo2,
+  Redo2,
+  Lightbulb,
+  Film,
+  Sparkles,
+  Plus,
+  Loader2,
+  Smartphone,
+  Square,
+  Monitor,
+  ArrowUpLeft,
+  ArrowUp,
+  ArrowDown,
+  Circle
+} from "lucide-react";
 
 const STEPS = [
   { key: "analyzing", label: "Extracting Frames" },
@@ -60,22 +84,22 @@ export default function ProjectPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [regenerating, setRegenerating] = useState(false);
-  
+
   // Tab state
   const [activeTab, setActiveTab] = useState<"ai" | "manual">("ai");
-  
+
   // Conversational editing state
   const [instruction, setInstruction] = useState("");
   const [refining, setRefining] = useState(false);
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const conversationEndRef = useRef<HTMLDivElement>(null);
-  
+
   // Proxy preview state
   const [proxyVideoUrl, setProxyVideoUrl] = useState<string | null>(null);
   const [hdRendering, setHdRendering] = useState(false);
   const [videoKey, setVideoKey] = useState(0);
-  
+
   // Text overlay state
   const [overlays, setOverlays] = useState<api.TextOverlay[]>([]);
   const [overlayModalOpen, setOverlayModalOpen] = useState(false);
@@ -89,12 +113,12 @@ export default function ProjectPage() {
   const [overlayFontSize, setOverlayFontSize] = useState(48);
   const [savingOverlays, setSavingOverlays] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState(false);
-  
+
   // Edit plan / AI intelligence state
   const [editPlan, setEditPlan] = useState<any>(null);
   const [editorNotes, setEditorNotes] = useState("");
   const [timelineClips, setTimelineClips] = useState<any[]>([]);
-  
+
   // Manual arrange state
   const [manualClips, setManualClips] = useState<Clip[]>([]);
   const [clipPool, setClipPool] = useState<Clip[]>([]);
@@ -104,7 +128,7 @@ export default function ProjectPage() {
   const [renderingManual, setRenderingManual] = useState(false);
   const [totalDuration, setTotalDuration] = useState(0);
   const [targetDuration, setTargetDuration] = useState(60);
-  
+
   const wsRef = useRef<WebSocket | null>(null);
   const { toast } = useToast();
 
@@ -160,11 +184,11 @@ export default function ProjectPage() {
   useEffect(() => {
     fetchProject();
   }, [fetchProject]);
-  
+
   // Load text overlays
   useEffect(() => {
     if (!id || project?.status !== "completed") return;
-    
+
     async function loadOverlays() {
       try {
         const result = await api.getOverlays(id);
@@ -173,21 +197,21 @@ export default function ProjectPage() {
         console.error("Failed to load overlays:", err);
       }
     }
-    
+
     loadOverlays();
   }, [id, project?.status]);
 
   // Load edit plan for AI intelligence data
   useEffect(() => {
     if (!id || project?.status !== "completed") return;
-    
+
     async function loadEditPlan() {
       try {
         const plan = await api.getEditPlan(id);
         setEditPlan(plan);
         setEditorNotes(plan.editor_notes || "");
         setTimelineClips(plan.timeline?.clips || []);
-        
+
         // Load manual arrange data
         const timelineClips = (plan.timeline?.clips || []).sort(
           (a: Clip, b: Clip) => a.order - b.order
@@ -200,7 +224,7 @@ export default function ProjectPage() {
         console.error("Failed to load edit plan:", err);
       }
     }
-    
+
     loadEditPlan();
   }, [id, project?.status]);
 
@@ -216,12 +240,12 @@ export default function ProjectPage() {
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    
+
     async function loadConversation() {
       try {
         const data = await api.getConversation(id);
         if (cancelled) return;
-        
+
         const messages: ConversationMessage[] = data.conversation
           .filter((m) => !m.undone)
           .map((m) => ({
@@ -231,7 +255,7 @@ export default function ProjectPage() {
             timestamp: new Date(m.timestamp).getTime(),
             version: m.version,
           }));
-        
+
         setConversation(messages);
       } catch (err) {
         console.error("Failed to load conversation:", err);
@@ -239,7 +263,7 @@ export default function ProjectPage() {
         if (!cancelled) setHistoryLoading(false);
       }
     }
-    
+
     loadConversation();
     return () => { cancelled = true; };
   }, [id]);
@@ -277,29 +301,29 @@ export default function ProjectPage() {
       text: instruction.trim(),
       timestamp: Date.now(),
     };
-    
+
     const loadingMsg: ConversationMessage = {
       id: "loading",
       type: "loading",
       text: "",
       timestamp: Date.now(),
     };
-    
+
     setConversation((prev) => [...prev, userMsg, loadingMsg]);
     setInstruction("");
     setRefining(true);
 
     try {
       const result = await api.refineEditPlan(id, userMsg.text);
-      
+
       setConversation((prev) => prev.filter((m) => m.id !== "loading"));
-      
+
       if (result.proxy_preview_url) {
         const proxyUrl = `${api.getVideoUrl("outputs/" + result.proxy_preview_url.split("/outputs/")[1])}`;
         setProxyVideoUrl(proxyUrl);
         setVideoKey((k) => k + 1);
         setHdRendering(result.hd_rendering || false);
-        
+
         if (result.conversation_messages) {
           const newMsgs: ConversationMessage[] = result.conversation_messages
             .filter((m: any) => m.role === "assistant")
@@ -312,15 +336,15 @@ export default function ProjectPage() {
             }));
           setConversation((prev) => [...prev, ...newMsgs]);
         }
-        
+
         toast("success", result.changes_summary || "Edit applied!");
       }
-      
+
       setTimeout(() => {
         fetchProject();
       }, 1000);
       setRefining(false);
-      
+
     } catch (e: unknown) {
       setConversation((prev) => prev.filter((m) => m.id !== "loading"));
       const errorMsg: ConversationMessage = {
@@ -343,7 +367,7 @@ export default function ProjectPage() {
         setProxyVideoUrl(proxyUrl);
         setVideoKey((k) => k + 1);
       }
-      
+
       if (result.undone_version) {
         setConversation((prev) => {
           const updated = prev.map((m) =>
@@ -359,7 +383,7 @@ export default function ProjectPage() {
           return [...updated, undoMsg];
         });
       }
-      
+
       toast("success", "Undone to previous version");
       fetchProject();
     } catch (e: unknown) {
@@ -375,7 +399,7 @@ export default function ProjectPage() {
         setProxyVideoUrl(proxyUrl);
         setVideoKey((k) => k + 1);
       }
-      
+
       if (result.redone_version) {
         setConversation((prev) => {
           const updated = prev.map((m) =>
@@ -391,7 +415,7 @@ export default function ProjectPage() {
           return [...updated, redoMsg];
         });
       }
-      
+
       toast("success", "Redone to next version");
       fetchProject();
     } catch (e: unknown) {
@@ -410,7 +434,7 @@ export default function ProjectPage() {
     const actionType = clip.action_type || "";
     const description = (clip.description || "").toLowerCase();
     const reason = (clip.reason || "").toLowerCase();
-    
+
     if (actionType === "ingredient_add" || description.includes("prep") || description.includes("chop") || description.includes("dice")) {
       return { icon: "🔪", label: "Prep", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" };
     }
@@ -423,23 +447,23 @@ export default function ProjectPage() {
     if (actionType === "mixing" || description.includes("mix") || description.includes("stir") || description.includes("whisk")) {
       return { icon: "🥄", label: "Mix", color: "bg-green-500/20 text-green-400 border-green-500/30" };
     }
-    
-    if (description.includes("hero") || description.includes("money shot") || description.includes("cheese pull") || 
+
+    if (description.includes("hero") || description.includes("money shot") || description.includes("cheese pull") ||
         description.includes("chocolate ooze") || description.includes("drizzle") || reason.includes("key moment")) {
       return { icon: "✨", label: "Hero", color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" };
     }
-    
+
     if (clip.shows_action_moment || description.includes("action") || description.includes("flip") || description.includes("pour")) {
       return { icon: "⚡", label: "Action", color: "bg-red-500/20 text-red-400 border-red-500/30" };
     }
-    
+
     if (description.includes("beauty") || description.includes("close-up") || description.includes("close up") || (clip.visual_quality && clip.visual_quality >= 8)) {
       return { icon: "📸", label: "Beauty", color: "bg-pink-500/20 text-pink-400 border-pink-500/30" };
     }
-    
+
     return null;
   };
-  
+
   // Text overlay functions
   const openOverlayModal = (overlay?: api.TextOverlay, index?: number) => {
     if (overlay && index !== undefined) {
@@ -463,24 +487,24 @@ export default function ProjectPage() {
     }
     setOverlayModalOpen(true);
   };
-  
+
   const closeOverlayModal = () => {
     setOverlayModalOpen(false);
     setEditingOverlay(null);
     setEditingOverlayIndex(null);
   };
-  
+
   const handleSaveOverlay = async () => {
     if (!overlayText.trim()) {
       toast("error", "Text is required");
       return;
     }
-    
+
     if (overlayEndTime <= overlayStartTime) {
       toast("error", "End time must be greater than start time");
       return;
     }
-    
+
     const newOverlay: api.TextOverlay = {
       text: overlayText.trim(),
       start_time: overlayStartTime,
@@ -489,16 +513,16 @@ export default function ProjectPage() {
       style: overlayStyle,
       font_size: overlayFontSize,
     };
-    
+
     let updatedOverlays: api.TextOverlay[];
-    
+
     if (editingOverlayIndex !== null) {
       updatedOverlays = [...overlays];
       updatedOverlays[editingOverlayIndex] = newOverlay;
     } else {
       updatedOverlays = [...overlays, newOverlay];
     }
-    
+
     setSavingOverlays(true);
     try {
       await api.updateOverlays(id, updatedOverlays);
@@ -511,12 +535,12 @@ export default function ProjectPage() {
       setSavingOverlays(false);
     }
   };
-  
+
   const handleDeleteOverlay = async (index: number) => {
     if (!confirm("Delete this text overlay?")) return;
-    
+
     const updatedOverlays = overlays.filter((_, i) => i !== index);
-    
+
     setSavingOverlays(true);
     try {
       await api.updateOverlays(id, updatedOverlays);
@@ -528,10 +552,10 @@ export default function ProjectPage() {
       setSavingOverlays(false);
     }
   };
-  
+
   const handleAutoGenerateOverlays = async () => {
     if (!confirm("Auto-generate overlays from recipe steps? This will replace existing overlays.")) return;
-    
+
     setAutoGenerating(true);
     try {
       const result = await api.autoGenerateOverlays(id, overlayStyle);
@@ -660,7 +684,7 @@ export default function ProjectPage() {
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-400 mb-4">{error || "Project not found"}</p>
-          <Link href="/dashboard" className="text-sm text-accent hover:text-accent-hover">← Back to Dashboard</Link>
+          <Link href="/dashboard" className="text-sm text-accent hover:text-accent-hover inline-flex items-center gap-1.5"><ArrowLeft size={14} /> Back to Dashboard</Link>
         </div>
       </div>
     );
@@ -685,12 +709,12 @@ export default function ProjectPage() {
       <header className="flex-shrink-0 border-b border-white/5 bg-[#0a0a0a] px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link 
-              href="/dashboard" 
-              className="text-gray-500 hover:text-white transition-all duration-200"
+            <Link
+              href="/dashboard"
+              className="text-gray-500 hover:text-white transition-all duration-200 inline-flex items-center gap-1.5"
               title="Back to Projects"
             >
-              ← Projects
+              <ArrowLeft size={16} /> Projects
             </Link>
             <div className="h-6 w-px bg-white/10" />
             <div>
@@ -709,21 +733,21 @@ export default function ProjectPage() {
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3">
             {project.status === "completed" && (
               <>
                 <button
                   onClick={handleDownload}
-                  className="px-4 py-2 rounded-lg border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-all duration-200"
+                  className="px-4 py-2 rounded-lg border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-all duration-200 inline-flex items-center gap-2"
                 >
-                  💾 Save
+                  <Save size={16} /> Save
                 </button>
                 <button
                   onClick={handleDownload}
-                  className="bg-accent hover:bg-accent-hover text-white px-6 py-2 rounded-lg font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/20"
+                  className="bg-accent hover:bg-accent-hover text-white px-6 py-2 rounded-lg font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/20 inline-flex items-center gap-2"
                 >
-                  ⬇️ Export
+                  <Download size={16} /> Export
                 </button>
               </>
             )}
@@ -743,7 +767,7 @@ export default function ProjectPage() {
       {error && (
         <div className="flex-shrink-0 mx-6 mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError("")} className="text-red-300 hover:text-white">✕</button>
+          <button onClick={() => setError("")} className="text-red-300 hover:text-white"><X size={16} /></button>
         </div>
       )}
 
@@ -759,10 +783,10 @@ export default function ProjectPage() {
                 <div className="mx-auto mb-4 relative" style={{ maxWidth: "400px" }}>
                   {hdRendering && (
                     <div className="absolute top-3 right-3 bg-yellow-500/90 text-black text-xs px-3 py-1.5 rounded-full font-semibold z-10 flex items-center gap-1">
-                      <span className="animate-pulse">⚙️</span> HD rendering...
+                      <Settings size={14} className="animate-spin" /> HD rendering...
                     </div>
                   )}
-                  
+
                   <video
                     key={`${videoKey}-${proxyVideoUrl || project.output_path}`}
                     src={proxyVideoUrl || api.getVideoUrl(project.output_path)}
@@ -775,9 +799,9 @@ export default function ProjectPage() {
                 {/* Aspect Ratio Selector */}
                 <div className="flex justify-center gap-2 mb-4">
                   {[
-                    { value: "9:16", label: "9:16", icon: "📱" },
-                    { value: "1:1", label: "1:1", icon: "⬜" },
-                    { value: "16:9", label: "16:9", icon: "🖥" },
+                    { value: "9:16", label: "9:16", Icon: Smartphone },
+                    { value: "1:1", label: "1:1", Icon: Square },
+                    { value: "16:9", label: "16:9", Icon: Monitor },
                   ].map((format) => {
                     const isCurrentFormat = project?.aspect_ratio === format.value;
                     return (
@@ -791,7 +815,7 @@ export default function ProjectPage() {
                         }`}
                         title={isCurrentFormat ? "Current format" : format.label}
                       >
-                        <span>{format.icon}</span>
+                        <format.Icon size={14} />
                         <span>{format.label}</span>
                         {isCurrentFormat && <span className="text-[9px]">✓</span>}
                       </button>
@@ -828,7 +852,7 @@ export default function ProjectPage() {
                         : "border-transparent text-gray-500 hover:text-gray-300"
                     }`}
                   >
-                    💬 AI Chat
+                    <span className="inline-flex items-center gap-2"><MessageSquare size={16} /> AI Chat</span>
                   </button>
                   <button
                     onClick={() => setActiveTab("manual")}
@@ -838,7 +862,7 @@ export default function ProjectPage() {
                         : "border-transparent text-gray-500 hover:text-gray-300"
                     }`}
                   >
-                    🎬 Manual
+                    <span className="inline-flex items-center gap-2"><Clapperboard size={16} /> Manual</span>
                   </button>
                 </div>
               </div>
@@ -869,13 +893,13 @@ export default function ProjectPage() {
                             if (msg.type === "undo" || msg.type === "redo") {
                               return (
                                 <div key={msg.id || idx} className="flex justify-center py-1">
-                                  <span className="text-xs text-gray-500 bg-white/5 px-3 py-1 rounded-full">
-                                    {msg.type === "undo" ? "↶" : "↷"} {msg.text}
+                                  <span className="text-xs text-gray-500 bg-white/5 px-3 py-1 rounded-full inline-flex items-center gap-1.5">
+                                    {msg.type === "undo" ? <Undo2 size={12} /> : <Redo2 size={12} />} {msg.text}
                                   </span>
                                 </div>
                               );
                             }
-                            
+
                             if (msg.type === "loading") {
                               return (
                                 <div key="loading" className="flex justify-start">
@@ -885,7 +909,7 @@ export default function ProjectPage() {
                                 </div>
                               );
                             }
-                            
+
                             return (
                               <div
                                 key={msg.id || idx}
@@ -911,7 +935,7 @@ export default function ProjectPage() {
                     {/* Prompt Chips */}
                     {!historyLoading && (
                       <div className="flex-shrink-0 mb-3">
-                        <p className="text-xs text-gray-500 mb-2">💡 Try these:</p>
+                        <p className="text-xs text-gray-500 mb-2 inline-flex items-center gap-1.5"><Lightbulb size={14} /> Try these:</p>
                         <div className="flex flex-wrap gap-2">
                           {[
                             { text: "Make it 30 seconds", condition: (editPlan?.timeline?.total_effective_duration || 0) > 35 },
@@ -951,7 +975,7 @@ export default function ProjectPage() {
                           className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-base transition-all duration-200 disabled:opacity-50"
                           title="Undo last edit"
                         >
-                          ↶
+                          <Undo2 size={18} />
                         </button>
                         <button
                           onClick={handleRedo}
@@ -959,7 +983,7 @@ export default function ProjectPage() {
                           className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-base transition-all duration-200 disabled:opacity-50"
                           title="Redo next edit"
                         >
-                          ↷
+                          <Redo2 size={18} />
                         </button>
                         <span className="text-xs text-gray-500">Edit history</span>
                       </div>
@@ -1044,8 +1068,8 @@ export default function ProjectPage() {
                                     if (fallback) (fallback as HTMLElement).style.display = 'flex';
                                   }}
                                 />
-                                <span className="text-xl absolute hidden items-center justify-center w-full h-full">🎞</span>
-                                
+                                <span className="absolute hidden items-center justify-center w-full h-full text-gray-600"><Film size={24} /></span>
+
                                 {clipTag && (
                                   <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border flex items-center gap-1 ${clipTag.color}`}>
                                     <span>{clipTag.icon}</span>
@@ -1058,14 +1082,14 @@ export default function ProjectPage() {
                                   className="absolute top-1 right-1 w-6 h-6 bg-black/70 hover:bg-red-500 text-white rounded-full flex items-center justify-center text-xs transition-all duration-200"
                                   title="Remove clip"
                                 >
-                                  ✕
+                                  <X size={14} />
                                 </button>
                               </div>
                               <div className="p-2">
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-[10px] text-accent font-semibold">#{idx + 1}</span>
                                   <span className="text-[10px] text-gray-500">
-                                    {formatTime(clip.start_time)} – {formatTime(clip.end_time)}
+                                    {formatTime(clip.start_time)} - {formatTime(clip.end_time)}
                                   </span>
                                 </div>
                                 <p className="text-[10px] text-gray-400 truncate">{clip.description}</p>
@@ -1110,14 +1134,22 @@ export default function ProjectPage() {
                         disabled={savingManual}
                         className="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50"
                       >
-                        {savingManual ? "Saving..." : "💾 Save"}
+                        {savingManual ? (
+                          <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Saving...</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-2"><Save size={16} /> Save</span>
+                        )}
                       </button>
                       <button
                         onClick={handleRenderFinal}
                         disabled={renderingManual || manualClips.length === 0}
                         className="flex-1 bg-accent hover:bg-accent-hover text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 disabled:opacity-50"
                       >
-                        {renderingManual ? "Starting..." : "🎬 Render"}
+                        {renderingManual ? (
+                          <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Starting...</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-2"><Clapperboard size={16} /> Render</span>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -1140,9 +1172,9 @@ export default function ProjectPage() {
                     }}
                     className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-7 h-7 flex items-center justify-center transition-all duration-200 shadow-lg text-sm"
                   >
-                    ←
+                    <ArrowLeft size={16} />
                   </button>
-                  
+
                   <button
                     onClick={() => {
                       const container = document.getElementById('bottom-clip-timeline');
@@ -1150,16 +1182,16 @@ export default function ProjectPage() {
                     }}
                     className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 hover:bg-black/90 text-white rounded-full w-7 h-7 flex items-center justify-center transition-all duration-200 shadow-lg text-sm"
                   >
-                    →
+                    <ArrowRight size={16} />
                   </button>
-                  
+
                   <div id="bottom-clip-timeline" className="flex gap-2 overflow-x-auto pb-2 px-8 scroll-smooth">
                     {decisions
                       .sort((a, b) => a.sequence_order - b.sequence_order)
                       .map((clip) => {
                         const timelineClip = timelineClips.find(c => c.clip_id === clip.id || c.action_id === clip.action_id);
                         const clipTag = getClipTag(timelineClip || clip);
-                        
+
                         return (
                           <div
                             key={clip.id}
@@ -1177,8 +1209,8 @@ export default function ProjectPage() {
                                   if (fallback) (fallback as HTMLElement).style.display = 'block';
                                 }}
                               />
-                              <span className="text-lg absolute" style={{ display: 'none' }}>🎞</span>
-                              
+                              <span className="absolute text-gray-600" style={{ display: 'none' }}><Film size={20} /></span>
+
                               {clipTag && (
                                 <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border flex items-center gap-0.5 ${clipTag.color}`}>
                                   <span className="text-[10px]">{clipTag.icon}</span>
@@ -1215,7 +1247,9 @@ export default function ProjectPage() {
                   disabled={autoGenerating || savingOverlays}
                   className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg text-xs font-medium transition-all duration-200 disabled:opacity-50"
                 >
-                  {autoGenerating ? "⏳" : "✨"} Auto-generate
+                  <span className="inline-flex items-center gap-1.5">
+                    {autoGenerating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Auto-generate
+                  </span>
                 </button>
                 <button
                   onClick={() => openOverlayModal()}
@@ -1239,7 +1273,7 @@ export default function ProjectPage() {
               </div>
             ) : isProcessing(project.status) ? (
               <div className="text-center">
-                <div className="text-6xl mb-4 animate-pulse">⚙️</div>
+                <div className="mb-4 flex justify-center text-gray-600"><Settings size={64} className="animate-spin" /></div>
                 <p className="text-white font-medium mb-2">
                   {project.current_step || "Processing..."}
                 </p>
@@ -1288,7 +1322,7 @@ export default function ProjectPage() {
                 disabled={savingOverlays}
                 className="text-gray-500 hover:text-white transition-all duration-200 disabled:opacity-50"
               >
-                ✕
+                <X size={20} />
               </button>
             </div>
 
@@ -1360,10 +1394,10 @@ export default function ProjectPage() {
                 <label className="text-sm text-gray-400 block mb-2">Position</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { value: "top-left", label: "Top Left", icon: "↖️" },
-                    { value: "top-center", label: "Top Center", icon: "⬆️" },
-                    { value: "bottom-center", label: "Bottom Center", icon: "⬇️" },
-                    { value: "center", label: "Center", icon: "⏺" },
+                    { value: "top-left", label: "Top Left", Icon: ArrowUpLeft },
+                    { value: "top-center", label: "Top Center", Icon: ArrowUp },
+                    { value: "bottom-center", label: "Bottom Center", Icon: ArrowDown },
+                    { value: "center", label: "Center", Icon: Circle },
                   ].map((pos) => (
                     <button
                       key={pos.value}
@@ -1375,7 +1409,7 @@ export default function ProjectPage() {
                           : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
                       } disabled:opacity-50`}
                     >
-                      <span>{pos.icon}</span>
+                      <pos.Icon size={16} />
                       <span>{pos.label}</span>
                     </button>
                   ))}
@@ -1408,7 +1442,13 @@ export default function ProjectPage() {
                   disabled={savingOverlays || !overlayText.trim()}
                   className="bg-accent hover:bg-accent-hover text-white px-8 py-3 rounded-xl font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/20 disabled:opacity-50"
                 >
-                  {savingOverlays ? "⏳ Saving..." : editingOverlay ? "💾 Update" : "➕ Add"}
+                  {savingOverlays ? (
+                    <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Saving...</span>
+                  ) : editingOverlay ? (
+                    <span className="inline-flex items-center gap-2"><Save size={16} /> Update</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2"><Plus size={16} /> Add</span>
+                  )}
                 </button>
                 <button
                   onClick={closeOverlayModal}

@@ -2,9 +2,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
+import { LayoutGrid, Settings } from "lucide-react";
 
 const nav = [
-  { href: "/dashboard", label: "Dashboard", icon: "▦" },
+  { href: "/dashboard", label: "Dashboard", icon: <LayoutGrid size={18} /> },
 ];
 
 interface SidebarProps {
@@ -31,7 +32,7 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
                 active ? "bg-white/10 text-white" : "text-gray-400 hover:text-white hover:bg-white/5"
               }`}
             >
-              <span className="text-base">{item.icon}</span>
+              {item.icon}
               {item.label}
             </Link>
           );
@@ -42,7 +43,7 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
           onClick={onOpenSettings}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm mb-0.5 transition-all duration-200 text-gray-400 hover:text-white hover:bg-white/5"
         >
-          <span className="text-base">⚙</span>
+          <Settings size={18} />
           Settings
         </button>
       </nav>
