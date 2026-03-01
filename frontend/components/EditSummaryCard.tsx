@@ -5,18 +5,15 @@ import {
   Sparkles, 
   ChevronUp, 
   ChevronDown, 
-  Film, 
-  Clock, 
-  CheckCircle2, 
-  Target,
-  CookingPot, 
+  BookOpen, 
   GitBranch, 
-  Clapperboard, 
-  Star, 
+  Zap, 
+  Crown, 
+  CheckCircle2, 
   Check, 
   AlertTriangle, 
   Info,
-  Minimize2
+  Star,
 } from "lucide-react";
 
 interface EditSummaryCardProps {
@@ -126,7 +123,7 @@ export function EditSummaryCard({
           className="bg-accent/5 border border-accent/20 rounded-lg p-3 flex items-center justify-between cursor-pointer hover:bg-accent/10 transition-all duration-200"
         >
           <div className="flex items-center gap-3">
-            <Sparkles className="w-6 h-6 text-accent" />
+            <Sparkles className="w-6 h-6 text-accent fill-accent" strokeWidth={0} />
             <div>
               <p className="text-sm font-semibold text-white">
                 {insights?.recipe || dishName || "Your Edit is Ready"}
@@ -136,7 +133,7 @@ export function EditSummaryCard({
               </p>
             </div>
           </div>
-          <ChevronDown className="w-5 h-5 text-gray-500 hover:text-white" />
+          <ChevronDown className="w-5 h-5 text-gray-400 hover:text-white transition-colors" strokeWidth={2} />
         </div>
       </div>
     );
@@ -151,15 +148,15 @@ export function EditSummaryCard({
         {/* Dismiss button */}
         <button
           onClick={() => setDismissed(true)}
-          className="absolute top-4 right-4 text-gray-500 hover:text-white transition-all duration-200"
+          className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
           title="Minimize"
         >
-          <ChevronUp className="w-5 h-5" />
+          <ChevronUp className="w-5 h-5" strokeWidth={2} />
         </button>
 
         {/* Header */}
         <div className="flex items-start gap-3 mb-5 relative z-10">
-          <Sparkles className="w-9 h-9 text-accent" />
+          <Sparkles className="w-7 h-7 text-accent fill-accent" strokeWidth={0} />
           <div>
             <h2 className="text-xl font-bold text-white mb-1">Your Edit is Ready!</h2>
             <p className="text-sm text-gray-400">
@@ -178,11 +175,11 @@ export function EditSummaryCard({
             <p className="text-2xl font-bold text-accent">{formatTime(totalDuration)}</p>
             <p className="text-xs text-gray-400 mt-1">Total Duration</p>
           </div>
-          <div className="bg-white/5 rounded-lg p-3 text-center border border-white/10">
-            <p className="text-2xl font-bold text-green-400">
-              {heroMoment ? <Target className="w-7 h-7 text-green-400 mx-auto" /> : <CheckCircle2 className="w-7 h-7 text-green-400 mx-auto" />}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">Story Complete</p>
+          <div className="bg-white/5 rounded-lg p-3 text-center border border-green-400/20 bg-green-400/5">
+            <div className="flex items-center justify-center mb-1">
+              <CheckCircle2 className="w-6 h-6 text-green-400" strokeWidth={2} />
+            </div>
+            <p className="text-xs text-gray-400">Story Complete</p>
           </div>
         </div>
 
@@ -191,7 +188,7 @@ export function EditSummaryCard({
           {/* Recipe/Dish */}
           {insights?.recipe && (
             <div className="flex items-start gap-2">
-              <span className="text-accent font-semibold text-sm flex items-center gap-1"><CookingPot className="w-4 h-4 inline" /> Recipe:</span>
+              <span className="text-accent font-semibold text-sm flex items-center gap-2 shrink-0"><BookOpen className="w-4 h-4" strokeWidth={2} /> Recipe:</span>
               <span className="text-sm text-gray-300">{insights.recipe}</span>
             </div>
           )}
@@ -199,7 +196,7 @@ export function EditSummaryCard({
           {/* Story Flow */}
           {insights?.flow && (
             <div className="flex items-start gap-2">
-              <span className="text-accent font-semibold text-sm flex items-center gap-1"><GitBranch className="w-4 h-4 inline" /> Flow:</span>
+              <span className="text-accent font-semibold text-sm flex items-center gap-2 shrink-0"><GitBranch className="w-4 h-4" strokeWidth={2} /> Flow:</span>
               <span className="text-sm text-gray-300">{insights.flow}</span>
             </div>
           )}
@@ -207,7 +204,7 @@ export function EditSummaryCard({
           {/* Key Moments */}
           {insights?.keyMoments && insights.keyMoments.length > 0 && (
             <div>
-              <span className="text-accent font-semibold text-sm flex items-center gap-1 mb-2"><Clapperboard className="w-4 h-4 inline" /> Key Moments:</span>
+              <span className="text-accent font-semibold text-sm flex items-center gap-2 mb-2"><Zap className="w-4 h-4 fill-accent text-accent" strokeWidth={0} /> Key Moments:</span>
               <ul className="space-y-1 ml-6">
                 {insights.keyMoments.slice(0, 3).map((moment, idx) => (
                   <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
@@ -223,7 +220,7 @@ export function EditSummaryCard({
           {heroMoment && (
             <div className="mt-4 bg-accent/10 border border-accent/30 rounded-lg p-3">
               <div className="flex items-start gap-2">
-                <Star className="w-5 h-5 text-accent fill-accent" />
+                <Star className="w-5 h-5 text-accent fill-accent" strokeWidth={0} />
                 <div>
                   <p className="text-sm font-semibold text-accent mb-1">Best Moment</p>
                   <p className="text-xs text-gray-300">{heroMoment}</p>
@@ -237,21 +234,21 @@ export function EditSummaryCard({
             <div className="flex items-center gap-2 text-xs mt-4">
               {totalDuration >= targetDuration - 5 && totalDuration <= targetDuration + 5 ? (
                 <>
-                  <Check className="w-4 h-4 text-green-400" />
+                  <CheckCircle2 className="w-4 h-4 text-green-400" strokeWidth={2} />
                   <span className="text-gray-400">
                     Perfect duration ({formatTime(totalDuration)} / {formatTime(targetDuration)} target)
                   </span>
                 </>
               ) : totalDuration > targetDuration + 5 ? (
                 <>
-                  <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                  <AlertTriangle className="w-4 h-4 text-yellow-400" strokeWidth={2} />
                   <span className="text-gray-400">
                     Slightly over target ({formatTime(totalDuration)} / {formatTime(targetDuration)})
                   </span>
                 </>
               ) : (
                 <>
-                  <Info className="w-4 h-4 text-blue-400" />
+                  <Info className="w-4 h-4 text-blue-400" strokeWidth={2} />
                   <span className="text-gray-400">
                     Under target ({formatTime(totalDuration)} / {formatTime(targetDuration)})
                   </span>
