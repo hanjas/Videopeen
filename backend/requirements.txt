@@ -11,3 +11,4 @@ mlx-vlm
 mlx-lm
 aiofiles
 Pillow
+opencv-python-headless>=4.8.0
