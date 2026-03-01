@@ -1049,6 +1049,10 @@ export default function ProjectPage() {
                       <div className="grid grid-cols-2 gap-3 mb-4">
                         {manualClips.map((clip, idx) => {
                           const clipTag = getClipTag(clip);
+                          const speedFactor = clip.speed_factor || 1;
+                          const duration = clip.effective_duration || (clip.end_time - clip.start_time) / speedFactor;
+                          const label = clip.description || clip.reason || 'Untitled clip';
+
                           return (
                             <div
                               key={clip.clip_id}
@@ -1057,14 +1061,14 @@ export default function ProjectPage() {
                               onDragOver={(e) => handleDragOver(e, idx)}
                               onDrop={() => handleDrop(idx)}
                               onDragEnd={handleDragEnd}
-                              className={`bg-surface rounded-lg border overflow-hidden cursor-move hover:border-accent/30 transition-all duration-200 ${
+                              className={`bg-zinc-800 rounded-lg border overflow-hidden cursor-move hover:border-orange-500 hover:ring-2 hover:ring-orange-500 hover:scale-105 transition-all duration-200 ${
                                 dragOverIdx === idx ? "border-accent" : "border-white/5"
                               }`}
                             >
-                              <div className="aspect-video bg-[#141414] flex items-center justify-center relative">
+                              <div className="relative aspect-video bg-[#141414] overflow-hidden rounded-t-lg">
                                 <img
                                   src={api.getClipThumbnailUrl(id, clip.clip_id)}
-                                  alt={clip.description}
+                                  alt={label}
                                   className="w-full h-full object-cover"
                                   loading="lazy"
                                   onError={(e) => {
@@ -1075,29 +1079,46 @@ export default function ProjectPage() {
                                 />
                                 <span className="absolute hidden items-center justify-center w-full h-full text-gray-600"><Film size={24} /></span>
 
+                                {/* Tag badge (top-left) */}
                                 {clipTag && (
-                                  <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border flex items-center gap-1 ${clipTag.color}`}>
+                                  <div className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold flex items-center gap-0.5 ${clipTag.color}`}>
                                     <span>{clipTag.icon}</span>
+                                    <span>{clipTag.label.charAt(0)}</span>
                                   </div>
                                 )}
 
-                                {/* Remove button */}
+                                {/* Speed indicator (top-right, conditional) */}
+                                {speedFactor !== 1 && (
+                                  <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-mono">
+                                    {speedFactor}×
+                                  </div>
+                                )}
+
+                                {/* Remove button (top-right, but below speed indicator if present) */}
                                 <button
                                   onClick={() => removeClip(clip.clip_id)}
-                                  className="absolute top-1 right-1 w-6 h-6 bg-black/70 hover:bg-red-500 text-white rounded-full flex items-center justify-center text-xs transition-all duration-200"
+                                  className={`absolute ${speedFactor !== 1 ? 'top-8' : 'top-1.5'} right-1.5 w-6 h-6 bg-black/70 hover:bg-red-500 text-white rounded-full flex items-center justify-center text-xs transition-all duration-200`}
                                   title="Remove clip"
                                 >
                                   <X size={14} />
                                 </button>
-                              </div>
-                              <div className="p-2">
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-[10px] text-accent font-semibold">#{idx + 1}</span>
-                                  <span className="text-[10px] text-gray-500">
-                                    {formatTime(clip.start_time)} - {formatTime(clip.end_time)}
-                                  </span>
+
+                                {/* Clip number (bottom-left) */}
+                                <div className="absolute bottom-1.5 left-1.5 text-orange-400 text-xs font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                                  #{idx + 1}
                                 </div>
-                                <p className="text-[10px] text-gray-400 truncate">{clip.description}</p>
+
+                                {/* Duration (bottom-right) */}
+                                <div className="absolute bottom-1.5 right-1.5 text-gray-200 text-xs font-mono bg-black/50 px-1 rounded">
+                                  {formatTime(duration)}
+                                </div>
+                              </div>
+
+                              {/* Text label area */}
+                              <div className="px-2 py-1.5 bg-zinc-800/50">
+                                <p className="text-xs text-gray-300 leading-tight line-clamp-2 break-words">
+                                  {label}
+                                </p>
                               </div>
                             </div>
                           );
@@ -1190,23 +1211,26 @@ export default function ProjectPage() {
                     <ArrowRight size={16} />
                   </button>
 
-                  <div id="bottom-clip-timeline" className="flex gap-2 overflow-x-auto pb-2 px-8 scroll-smooth">
+                  <div id="bottom-clip-timeline" className="flex gap-3 overflow-x-auto pb-2 px-8 scroll-smooth">
                     {(timelineClips.length > 0 ? timelineClips : decisions)
                       .sort((a: any, b: any) => (a.order ?? a.sequence_order ?? 0) - (b.order ?? b.sequence_order ?? 0))
                       .map((clip: any, idx: number) => {
                         const clipId = clip.clip_id || clip.id;
                         const clipTag = getClipTag(clip);
+                        const speedFactor = clip.speed_factor || 1;
+                        const duration = (clip.end_time - clip.start_time) / speedFactor;
+                        const label = clip.description || clip.reason || 'Untitled clip';
 
                         return (
                           <div
                             key={clipId || `clip-${idx}`}
-                            className="flex-shrink-0 w-32 bg-surface rounded-lg border border-white/5 hover:border-accent/30 transition-all duration-200 overflow-hidden group cursor-pointer"
+                            className="flex-shrink-0 w-40 bg-zinc-800 rounded-lg border border-white/5 hover:border-orange-500 hover:ring-2 hover:ring-orange-500 hover:scale-105 transition-all duration-200 overflow-hidden group cursor-pointer"
                           >
-                            <div className="aspect-video bg-[#141414] flex items-center justify-center relative">
+                            <div className="relative aspect-video bg-[#141414] overflow-hidden rounded-t-lg">
                               {clipId ? (
                                 <img
                                   src={api.getClipThumbnailUrl(id, clipId)}
-                                  alt={clip.reason || clip.description || "Clip"}
+                                  alt={label}
                                   className="w-full h-full object-cover"
                                   loading="lazy"
                                   onError={(e) => {
@@ -1216,19 +1240,39 @@ export default function ProjectPage() {
                                   }}
                                 />
                               ) : null}
-                              <span className="absolute text-gray-600" style={{ display: clipId ? 'none' : 'block' }}><Film size={20} /></span>
+                              <span className="absolute text-gray-600 inset-0 flex items-center justify-center" style={{ display: clipId ? 'none' : 'flex' }}><Film size={20} /></span>
 
+                              {/* Tag badge (top-left) */}
                               {clipTag && (
-                                <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border flex items-center gap-0.5 ${clipTag.color}`}>
-                                  <span className="text-[10px]">{clipTag.icon}</span>
+                                <div className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold flex items-center gap-0.5 ${clipTag.color}`}>
+                                  <span>{clipTag.icon}</span>
+                                  <span>{clipTag.label.charAt(0)}</span>
                                 </div>
                               )}
-                            </div>
-                            <div className="p-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] text-accent font-semibold">#{(clip.order ?? clip.sequence_order ?? idx) + 1}</span>
-                                <span className="text-[9px] text-gray-600">{formatTime((clip.end_time - clip.start_time) / (clip.speed_factor || 1))}</span>
+
+                              {/* Speed indicator (top-right, conditional) */}
+                              {speedFactor !== 1 && (
+                                <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-mono">
+                                  {speedFactor}×
+                                </div>
+                              )}
+
+                              {/* Clip number (bottom-left) */}
+                              <div className="absolute bottom-1.5 left-1.5 text-orange-400 text-xs font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                                #{(clip.order ?? clip.sequence_order ?? idx) + 1}
                               </div>
+
+                              {/* Duration (bottom-right) */}
+                              <div className="absolute bottom-1.5 right-1.5 text-gray-200 text-xs font-mono bg-black/50 px-1 rounded">
+                                {formatTime(duration)}
+                              </div>
+                            </div>
+
+                            {/* Text label area */}
+                            <div className="px-2 py-1.5 bg-zinc-800/50">
+                              <p className="text-xs text-gray-300 leading-tight line-clamp-2 break-words">
+                                {label}
+                              </p>
                             </div>
                           </div>
                         );
