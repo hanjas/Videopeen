@@ -113,6 +113,14 @@ CRITICAL RULES:
 - Pauses/idle moments (nothing happening) should be noted as "idle" actions
 - Be PRECISE with timestamps based on the frame positions provided
 - If an action spans across the end of this batch, note it as "continues_next: true"
+
+STATE-DIFF RULE:
+- When marking a period as IDLE, compare the scene at the START vs END of the idle period.
+- If ANY new ingredient, substance, powder, liquid, or item has appeared that wasn't there before,
+  mark it as an ACTION with action_type "inferred_addition" and description
+  "[item] appeared — likely added between Xs-Ys" even if you didn't see the hand movement.
+- A 40-second "idle" gap in a spice-adding sequence is suspicious — look carefully for changes.
+- If the bowl/pot has new content compared to the previous frames, SOMETHING was added.
 """
 
 
@@ -133,14 +141,24 @@ def _build_timeline_prompt(
     if prev_action_hint:
         prev_hint = f"\nThe previous batch ended with action: \"{prev_action_hint}\". Continue from there."
     
+    overlap_note = ""
+    if batch_index > 0:
+        overlap_note = "\nNote: The first frame of this batch overlaps with the last frame of the previous batch for context continuity."
+    
     return f"""Analyze these {len(frame_timestamps)} consecutive frames from cooking video "{video_name}".
 
 RECIPE: {recipe_context.get('dish_name', 'Unknown')}
 STEPS:
 {steps_text}
 
+INGREDIENT TRACKING:
+The recipe steps above mention specific ingredients. Use them to help identify what you see:
+- Match powder colors to expected spices (brown = garam masala/cumin, yellow = turmeric, red/orange = chili, white = salt/sugar/flour)
+- If you see fewer ingredient additions than the recipe expects, note which ones were NOT observed
+- Add a "missing_ingredients" field to your response listing expected but undetected ingredients
+
 Frame timestamps: [{ts_text}]
-Batch {batch_index + 1}/{total_batches} of this video.{prev_hint}
+Batch {batch_index + 1}/{total_batches} of this video.{overlap_note}{prev_hint}
 
 Identify every discrete ACTION in these frames. For each action:
 - What exactly is happening (be specific: "adding Kashmiri chilli powder with spoon" not "seasoning")
@@ -158,14 +176,15 @@ Return JSON:
       "recipe_step": <step number or null>,
       "start_time": <float seconds>,
       "end_time": <float seconds>,
-      "action_type": "ingredient_add|mixing|cooking|plating|setup|idle|transition",
+      "action_type": "ingredient_add|mixing|cooking|plating|setup|idle|transition|inferred_addition",
       "shows_action_moment": true/false,
       "visual_quality": <1-10>,
       "key_frame_timestamp": <timestamp of best frame for this action>,
       "continues_next": false
     }}
   ],
-  "batch_summary": "<1-2 sentence summary of what happens in this batch>"
+  "batch_summary": "<1-2 sentence summary of what happens in this batch>",
+  "missing_ingredients": ["list of recipe ingredients not observed in this batch"]
 }}"""
 
 
@@ -263,6 +282,8 @@ async def detect_actions_for_video(
     async def process_batch(i: int) -> None:
         async with semaphore:
             start_idx = i * batch_size
+            if i > 0:
+                start_idx -= 1  # Include last frame of previous batch
             end_idx = min(start_idx + batch_size, n_frames)
             batch_paths = frame_paths[start_idx:end_idx]
             batch_timestamps = frame_timestamps[start_idx:end_idx]
