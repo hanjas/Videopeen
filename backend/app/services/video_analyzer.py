@@ -488,7 +488,7 @@ async def create_edit_plan(
     
     response = await client.messages.create(
         model=settings.text_model,
-        max_tokens=4000,
+        max_tokens=8000,
         system=EDITOR_SYSTEM,
         messages=[{"role": "user", "content": content}],
     )
