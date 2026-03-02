@@ -153,22 +153,21 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
             max(1, (len(fr.frame_paths) + 14) // 15) for fr in all_frame_results
         )
         batches_done = 0
+        _progress_lock = asyncio.Lock()
 
-        for ci, frame_result in enumerate(all_frame_results):
+        # Process ALL videos in parallel (each video's internal batches also parallel)
+        async def _detect_video(ci: int, frame_result: DenseFrameResult) -> tuple[int, list[dict], dict]:
             video_name = os.path.basename(frame_result.video_path)
 
             async def _on_batch(batch_num: int, n_batches: int, n_actions: int,
                                 _ci=ci, _total=total_batches) -> None:
                 nonlocal batches_done
-                batches_done = sum(
-                    max(1, (len(all_frame_results[j].frame_paths) + 14) // 15)
-                    for j in range(_ci)
-                ) + batch_num
-                progress = 25 + (35 * batches_done / _total)
-                await _update_project(
-                    db, project_id, ProjectStatus.ANALYZING, progress,
-                    f"Detecting actions: batch {batches_done}/{_total} "
-                    f"({n_actions + len(all_actions)} actions found)")
+                async with _progress_lock:
+                    batches_done += 1
+                    progress = 25 + (35 * batches_done / _total)
+                    await _update_project(
+                        db, project_id, ProjectStatus.ANALYZING, progress,
+                        f"Detecting actions: batch {batches_done}/{_total}")
 
             actions = await detect_actions_for_video(
                 frame_paths=frame_result.frame_paths,
@@ -177,25 +176,34 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
                 video_name=video_name,
                 batch_size=15,
                 on_batch_done=_on_batch,
+                max_concurrent=5,
             )
-            
-            # Offset action IDs to be globally unique
-            offset = len(all_actions)
-            for a in actions:
-                a["action_id"] = a["action_id"] + offset
-                a["video_index"] = ci
-            
-            all_actions.extend(actions)
-            video_sources.append({
+
+            source_info = {
                 "name": video_name,
                 "path": frame_result.video_path,
                 "duration": frame_result.total_duration,
                 "n_actions": len(actions),
-            })
+            }
+            return ci, actions, source_info
 
-            progress = 25 + (35 * (ci + 1) / len(all_frame_results))
-            await _update_project(db, project_id, ProjectStatus.ANALYZING, progress,
-                                  f"Detected {len(all_actions)} actions across {ci+1}/{len(all_frame_results)} videos")
+        # Run all videos concurrently
+        video_results = await asyncio.gather(*[
+            _detect_video(ci, fr) for ci, fr in enumerate(all_frame_results)
+        ])
+
+        # Merge results in original order, assign global action IDs
+        video_results_sorted = sorted(video_results, key=lambda x: x[0])
+        for ci, actions, source_info in video_results_sorted:
+            offset = len(all_actions)
+            for a in actions:
+                a["action_id"] = a["action_id"] + offset
+                a["video_index"] = ci
+            all_actions.extend(actions)
+            video_sources.append(source_info)
+
+        await _update_project(db, project_id, ProjectStatus.ANALYZING, 60,
+                              f"Detected {len(all_actions)} actions across {len(all_frame_results)} videos")
 
         logger.info("Total actions detected: %d across %d videos",
                      len(all_actions), len(video_sources))
