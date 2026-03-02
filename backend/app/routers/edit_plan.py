@@ -866,6 +866,9 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
         changes_summary = result.get("summary", "")
         warnings = result.get("warnings", [])
         
+        logger.info("Refine tool response: mode=%s, has_clips=%s, has_candidates=%s, summary=%s",
+                    mode, bool(result.get("clips")), bool(result.get("candidates")), changes_summary[:80])
+        
         # Branch on mode: propose vs apply
         if mode == "propose":
             # Don't render anything - just return the proposal
@@ -928,7 +931,86 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
         raw_clips = result.get("clips", [])
         
         if not raw_clips:
-            raise HTTPException(400, "Claude returned empty timeline")
+            # If Claude returned no clips but has candidates, treat as propose
+            if result.get("candidates"):
+                logger.warning("Claude returned mode=apply but no clips with candidates present, treating as propose")
+                mode = "propose"
+                # Re-run the propose branch by falling through
+                candidates = result.get("candidates", [])
+                enriched_candidates = []
+                for cand in candidates:
+                    clip_ref = cand.get("clip_ref", "")
+                    source_clip = resolve_single_clip_ref(clip_ref, included_clips, clip_pool_sorted)
+                    if source_clip:
+                        cand["start_time"] = source_clip.get("start_time", 0)
+                        cand["end_time"] = source_clip.get("end_time", 0)
+                        cand["visual_quality"] = source_clip.get("visual_quality", 5)
+                        cand["source_video"] = source_clip.get("source_video", "")
+                        cand["action_id"] = source_clip.get("action_id", "")
+                    enriched_candidates.append(cand)
+                
+                new_version = plan.get("version", 1)
+                user_msg = {
+                    "id": str(uuid4()),
+                    "role": "user",
+                    "text": body.instruction,
+                    "version": new_version,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "undone": False
+                }
+                assistant_msg = {
+                    "id": str(uuid4()),
+                    "role": "assistant",
+                    "text": changes_summary,
+                    "version": new_version,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "undone": False,
+                    "is_proposal": True
+                }
+                await db.edit_plans.update_one(
+                    {"project_id": project_id},
+                    {"$push": {"conversation": {"$each": [user_msg, assistant_msg]}}},
+                )
+                return {
+                    "type": "proposal",
+                    "summary": changes_summary,
+                    "candidates": enriched_candidates,
+                    "proposed_action": result.get("proposed_action", ""),
+                    "warnings": warnings,
+                    "conversation_messages": [user_msg, assistant_msg],
+                }
+            
+            # If truly no clips and no candidates, return error as chat message instead of 500
+            logger.warning("Claude returned empty timeline with no candidates")
+            new_version = plan.get("version", 1)
+            user_msg = {
+                "id": str(uuid4()),
+                "role": "user",
+                "text": body.instruction,
+                "version": new_version,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "undone": False
+            }
+            assistant_msg = {
+                "id": str(uuid4()),
+                "role": "assistant",
+                "text": changes_summary or "I couldn't process that edit. Could you try rephrasing?",
+                "version": new_version,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "undone": False
+            }
+            await db.edit_plans.update_one(
+                {"project_id": project_id},
+                {"$push": {"conversation": {"$each": [user_msg, assistant_msg]}}},
+            )
+            return {
+                "type": "proposal",
+                "summary": changes_summary or "I couldn't process that edit. Could you try rephrasing?",
+                "candidates": [],
+                "proposed_action": "",
+                "warnings": warnings or ["Could not generate a valid edit from this instruction"],
+                "conversation_messages": [user_msg, assistant_msg],
+            }
         
         logger.info("Refine via tool_use: %d clips, summary: %s", len(raw_clips), changes_summary[:100])
         if warnings:
