@@ -176,7 +176,7 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
                 video_name=video_name,
                 batch_size=15,
                 on_batch_done=_on_batch,
-                max_concurrent=5,
+                max_concurrent=7,
             )
 
             source_info = {
