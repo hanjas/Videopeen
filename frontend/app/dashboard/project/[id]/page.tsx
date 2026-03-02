@@ -83,6 +83,8 @@ interface Clip {
   thumbnail_path: string | null;
   status: "included" | "excluded" | "added_by_user";
   added_by: "ai" | "user";
+  visual_quality?: number;
+  proxy_path?: string;
 }
 
 export default function ProjectPage() {
@@ -136,6 +138,7 @@ export default function ProjectPage() {
   const [renderingManual, setRenderingManual] = useState(false);
   const [totalDuration, setTotalDuration] = useState(0);
   const [targetDuration, setTargetDuration] = useState(60);
+  const [previewClipId, setPreviewClipId] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const { toast } = useToast();
@@ -1247,14 +1250,53 @@ export default function ProjectPage() {
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             {clipPool.map((clip) => (
-                              <button
+                              <div
                                 key={clip.clip_id}
-                                onClick={() => addFromPool(clip.clip_id)}
-                                className="bg-white/5 hover:bg-white/10 rounded-lg p-2 text-left transition-all duration-200 border border-white/5 hover:border-accent/30"
+                                className="bg-zinc-800 hover:bg-zinc-800/80 rounded-lg overflow-hidden border border-zinc-700 hover:border-orange-500/30 transition-all duration-200"
                               >
-                                <p className="text-[10px] text-gray-400 truncate">{clip.description}</p>
-                                <p className="text-[9px] text-gray-600 mt-1">{formatTime(clip.duration)}s</p>
-                              </button>
+                                {/* Thumbnail with play button */}
+                                <div className="relative h-24 bg-zinc-900 group">
+                                  <img
+                                    src={api.getClipThumbnailUrl(id, clip.clip_id)}
+                                    alt={clip.description}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                    }}
+                                  />
+                                  {/* Play button overlay */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPreviewClipId(clip.clip_id);
+                                    }}
+                                    className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                                  >
+                                    <div className="bg-orange-500 rounded-full p-2 hover:bg-orange-600 transition-colors">
+                                      <Play className="w-5 h-5 text-white fill-white" />
+                                    </div>
+                                  </button>
+                                </div>
+                                
+                                {/* Clip info */}
+                                <div className="p-2">
+                                  <p className="text-[10px] text-gray-300 truncate mb-1">{clip.description}</p>
+                                  <div className="flex items-center justify-between text-[9px] text-gray-500 mb-2">
+                                    <span>{formatTime(clip.duration)}s</span>
+                                    {clip.visual_quality !== undefined && (
+                                      <span>q:{clip.visual_quality}/10</span>
+                                    )}
+                                  </div>
+                                  {/* Add button */}
+                                  <button
+                                    onClick={() => addFromPool(clip.clip_id)}
+                                    className="w-full flex items-center justify-center gap-1 px-2 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs rounded transition-colors"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    Add
+                                  </button>
+                                </div>
+                              </div>
                             ))}
                           </div>
                         </div>
@@ -1621,6 +1663,38 @@ export default function ProjectPage() {
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Video Preview Modal */}
+      {previewClipId && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setPreviewClipId(null)}
+        >
+          <div
+            className="bg-zinc-900 rounded-lg border border-zinc-700 max-w-3xl w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+              <h3 className="text-white font-semibold">Clip Preview</h3>
+              <button
+                onClick={() => setPreviewClipId(null)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4">
+              <video
+                key={previewClipId}
+                src={`http://localhost:8000/uploads/${id}/proxies/${previewClipId}.mp4`}
+                controls
+                autoPlay
+                className="w-full rounded-lg bg-black"
+              />
             </div>
           </div>
         </div>
