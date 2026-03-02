@@ -70,6 +70,34 @@ export interface ConversationMsg {
   undone: boolean;
 }
 
+export interface ProposalCandidate {
+  clip_ref: string;
+  description: string;
+  reason: string;
+  start_time?: number;
+  end_time?: number;
+  visual_quality?: number;
+  source_video?: string;
+  action_id?: string;
+}
+
+export interface RefineResponse {
+  type: "edit" | "proposal";
+  summary: string;
+  // For edit type
+  timeline?: any;
+  proxy_url?: string;
+  proxy_preview_url?: string;
+  hd_rendering?: boolean;
+  conversation_messages?: any[];
+  changes_summary?: string;
+  version?: number;
+  // For proposal type
+  candidates?: ProposalCandidate[];
+  proposed_action?: string;
+  warnings?: string[];
+}
+
 function normalizeIds<T>(obj: T): T {
   if (Array.isArray(obj)) return obj.map(normalizeIds) as T;
   if (obj && typeof obj === "object") {
@@ -198,7 +226,7 @@ export const api = {
     }),
 
   refineEditPlan: (projectId: string, instruction: string) =>
-    apiFetch<any>(`/api/projects/${projectId}/edit-plan/refine`, {
+    apiFetch<RefineResponse>(`/api/projects/${projectId}/edit-plan/refine`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ instruction }),

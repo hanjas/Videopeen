@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { api, Project, EditDecision, TextOverlay } from "@/lib/api";
+import { api, Project, EditDecision, TextOverlay, ProposalCandidate } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import { EditSummaryCard } from "@/components/EditSummaryCard";
 import {
@@ -56,11 +56,14 @@ const statusColor: Record<string, string> = {
 
 interface ConversationMessage {
   id: string;
-  type: "user" | "system" | "undo" | "redo" | "loading";
+  type: "user" | "system" | "undo" | "redo" | "loading" | "proposal";
   text: string;
   timestamp: number;
   version?: number;
   undone?: boolean;
+  // For proposal type
+  candidates?: ProposalCandidate[];
+  proposed_action?: string;
 }
 
 interface Clip {
@@ -296,6 +299,27 @@ export default function ProjectPage() {
     window.open(api.getOutputUrl(id), "_blank");
   };
 
+  const handleConfirmCandidate = async (candidate: ProposalCandidate) => {
+    const confirmMsg = `Use ${candidate.clip_ref} - ${candidate.description}`;
+    setInstruction(confirmMsg);
+    setTimeout(() => {
+      const form = document.getElementById('chat-form') as HTMLFormElement;
+      if (form) form.requestSubmit();
+    }, 100);
+  };
+
+  const handleNeitherCandidate = () => {
+    setInstruction("None of those, I meant ");
+    const inputElement = document.querySelector('input[type="text"]') as HTMLInputElement;
+    if (inputElement) {
+      inputElement.focus();
+      // Position cursor at end
+      setTimeout(() => {
+        inputElement.setSelectionRange(inputElement.value.length, inputElement.value.length);
+      }, 10);
+    }
+  };
+
   const handleRefine = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!instruction.trim() || refining) return;
@@ -323,6 +347,22 @@ export default function ProjectPage() {
 
       setConversation((prev) => prev.filter((m) => m.id !== "loading"));
 
+      // Handle proposal response
+      if (result.type === "proposal") {
+        const proposalMsg: ConversationMessage = {
+          id: `proposal-${Date.now()}`,
+          type: "proposal",
+          text: result.summary,
+          timestamp: Date.now(),
+          candidates: result.candidates,
+          proposed_action: result.proposed_action,
+        };
+        setConversation((prev) => [...prev, proposalMsg]);
+        setRefining(false);
+        return;
+      }
+
+      // Handle edit response (existing flow)
       if (result.proxy_preview_url) {
         const proxyUrl = `${api.getVideoUrl("outputs/" + result.proxy_preview_url.split("/outputs/")[1])}`;
         setProxyVideoUrl(proxyUrl);
@@ -912,6 +952,70 @@ export default function ProjectPage() {
                                 <div key="loading" className="flex justify-start">
                                   <div className="bg-white/5 px-4 py-2 rounded-lg text-sm text-gray-400 flex items-center gap-2">
                                     <span className="animate-pulse">●</span> Working on it…
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (msg.type === "proposal") {
+                              return (
+                                <div key={msg.id || idx} className="flex justify-start">
+                                  <div className="max-w-[95%]">
+                                    <div className="bg-white/5 px-4 py-2 rounded-lg text-sm text-gray-300 mb-3">
+                                      {msg.text}
+                                    </div>
+                                    
+                                    {msg.candidates && msg.candidates.length > 0 && (
+                                      <div className="bg-zinc-800 rounded-lg p-4 border border-zinc-700">
+                                        {msg.proposed_action && (
+                                          <p className="text-sm text-zinc-400 mb-3">
+                                            {msg.proposed_action}
+                                          </p>
+                                        )}
+                                        
+                                        <div className={`grid ${msg.candidates.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
+                                          {msg.candidates.map((candidate, cidx) => (
+                                            <button
+                                              key={candidate.clip_ref}
+                                              onClick={() => handleConfirmCandidate(candidate)}
+                                              className="bg-zinc-900 rounded-lg p-3 border border-zinc-600 hover:border-orange-500 transition-colors text-left"
+                                            >
+                                              {candidate.action_id && (
+                                                <img 
+                                                  src={api.getClipThumbnailUrl(id, candidate.action_id)}
+                                                  className="w-full h-24 object-cover rounded mb-2"
+                                                  alt={candidate.description}
+                                                />
+                                              )}
+                                              
+                                              <p className="text-sm font-medium text-white truncate">
+                                                {candidate.description}
+                                              </p>
+                                              <p className="text-xs text-zinc-400 mt-1 line-clamp-2">
+                                                {candidate.reason}
+                                              </p>
+                                              <div className="flex justify-between mt-2 text-xs text-zinc-500">
+                                                <span>
+                                                  {candidate.start_time !== undefined && candidate.end_time !== undefined 
+                                                    ? `${formatTime(candidate.start_time)} - ${formatTime(candidate.end_time)}`
+                                                    : ''}
+                                                </span>
+                                                {candidate.visual_quality !== undefined && (
+                                                  <span>q:{candidate.visual_quality}/10</span>
+                                                )}
+                                              </div>
+                                            </button>
+                                          ))}
+                                        </div>
+                                        
+                                        <button
+                                          onClick={handleNeitherCandidate}
+                                          className="mt-3 w-full text-sm text-zinc-400 hover:text-white py-2 border border-zinc-700 rounded hover:border-zinc-500 transition-colors"
+                                        >
+                                          Neither of these
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               );
