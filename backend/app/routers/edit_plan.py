@@ -26,6 +26,8 @@ from app.services.proxy_renderer import (
 )
 from app.services.text_overlay import auto_generate_overlays_from_recipe
 from app.services.thumbnail import generate_thumbnails_from_clips
+from app.services.clip_finder import find_clips_by_text, smart_find_clip
+from app.websocket.manager import ws_manager
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -193,6 +195,53 @@ def resolve_single_clip_ref(clip_ref: str, timeline_clips: list, pool_clips: lis
     return None
 
 
+def should_trigger_smart_search(result: dict, mode: str) -> bool:
+    """Detect if Claude's response indicates it couldn't find a clip."""
+    summary = result.get("summary", "").lower()
+    
+    # Mode is "propose" AND candidates list is empty or all have low relevance
+    if mode == "propose":
+        candidates = result.get("candidates", [])
+        if not candidates:
+            return True
+        # Check if all candidates have very low relevance scores
+        low_relevance_count = sum(1 for c in candidates if c.get("relevance", 0) < 0.4)
+        if low_relevance_count == len(candidates):
+            return True
+    
+    # Mode is "apply" but summary mentions "couldn't find" / "no matching clip"
+    not_found_phrases = [
+        "couldn't find",
+        "can't find",
+        "unable to find",
+        "no matching clip",
+        "not in the pool",
+        "don't see",
+        "doesn't appear",
+        "not available",
+        "no clip for",
+    ]
+    if any(phrase in summary for phrase in not_found_phrases):
+        return True
+    
+    # Mode is "propose" and summary contains uncertainty language
+    if mode == "propose":
+        uncertainty_phrases = [
+            "not sure which",
+            "unclear which",
+            "might be",
+            "could be",
+            "possibly",
+            "unclear if",
+        ]
+        if any(phrase in summary for phrase in uncertainty_phrases):
+            # Only trigger if also mentions searching/finding
+            if any(word in summary for word in ["find", "search", "looking for", "locate"]):
+                return True
+    
+    return False
+
+
 # ---- Models ---- #
 
 class UpdateClipsRequest(BaseModel):
@@ -208,6 +257,11 @@ class ConfirmRequest(BaseModel):
 class RefineRequest(BaseModel):
     """Conversational edit instruction."""
     instruction: str
+
+
+class SmartSearchRequest(BaseModel):
+    """Manual smart clip search request."""
+    query: str
 
 
 class TextOverlay(BaseModel):
@@ -789,6 +843,11 @@ async def refine_edit_plan(project_id: str, body: RefineRequest, request: Reques
         for i, c in enumerate(included_clips)
     ])
     
+    # Layer 0 pre-boost: Run fast regex search before Claude call
+    logger.info("Layer 0 pre-boost: searching for query in instruction")
+    pre_boost_matches = await find_clips_by_text(body.instruction, clip_pool)
+    pre_boost_clip_ids = {c.get("clip_id") for c in pre_boost_matches[:5]}  # Top 5 matches
+    
     # Extract keywords from user instruction for relevance boost
     instruction_lower = body.instruction.lower()
     keywords = [w for w in instruction_lower.split() if len(w) > 2]
@@ -798,19 +857,26 @@ async def refine_edit_plan(project_id: str, body: RefineRequest, request: Reques
         desc = clip.get("description", "").lower()
         return sum(1 for k in keywords if k in desc)
     
-    # Sort: keyword matches first, then by visual_quality
-    clip_pool_sorted = sorted(
-        clip_pool,
-        key=lambda c: (-keyword_score(c), -c.get("visual_quality", 0))
-    )
+    # Sort: Layer 0 matches first, then keyword matches, then by visual_quality
+    def sort_key(clip):
+        is_pre_boost = clip.get("clip_id") in pre_boost_clip_ids
+        return (-int(is_pre_boost), -keyword_score(clip), -clip.get("visual_quality", 0))
     
-    pool_text = "\n".join([
-        f"[P{i}] {c.get('start_time', 0):.1f}-{c.get('end_time', 0):.1f}s | "
-        f"q:{c.get('visual_quality', 0)}/10 | "
-        f"src:{c.get('source_video', '?')[:8]} | "
-        f"{c.get('description', 'Action')}"
-        for i, c in enumerate(clip_pool_sorted[:50])
-    ])
+    clip_pool_sorted = sorted(clip_pool, key=sort_key)
+    
+    # Build pool text with [LIKELY MATCH] prefix for pre-boost matches
+    pool_lines = []
+    for i, c in enumerate(clip_pool_sorted[:50]):
+        prefix = "[LIKELY MATCH] " if c.get("clip_id") in pre_boost_clip_ids else ""
+        line = (
+            f"{prefix}[P{i}] {c.get('start_time', 0):.1f}-{c.get('end_time', 0):.1f}s | "
+            f"q:{c.get('visual_quality', 0)}/10 | "
+            f"src:{c.get('source_video', '?')[:8]} | "
+            f"{c.get('description', 'Action')}"
+        )
+        pool_lines.append(line)
+    
+    pool_text = "\n".join(pool_lines)
     
     current_duration = sum(
         c.get("effective_duration", 0) for c in included_clips
@@ -874,6 +940,147 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
         
         logger.info("Refine tool response: mode=%s, has_clips=%s, has_candidates=%s, summary=%s",
                     mode, bool(result.get("clips")), bool(result.get("candidates")), changes_summary[:80])
+        
+        # Smart search fallback: If Claude couldn't find a clip, try smart search
+        if should_trigger_smart_search(result, mode):
+            logger.info("Smart search triggered: Claude couldn't find clip for: '%s'", body.instruction[:100])
+            
+            # Send WebSocket progress update
+            await ws_manager.send_progress(project_id, {
+                "type": "smart_search_progress",
+                "layer": 0,
+                "message": "Searching for your clip..."
+            })
+            
+            # Combine timeline and pool for comprehensive search
+            all_clips = timeline_clips + clip_pool
+            
+            try:
+                search_result = await smart_find_clip(
+                    query=body.instruction,
+                    all_clips=all_clips,
+                    project_id=project_id,
+                )
+                
+                if search_result["type"] == "found":
+                    found_clips = search_result.get("clips", [])
+                    layer = search_result.get("layer", 0)
+                    
+                    logger.info("Smart search SUCCESS at Layer %d: found %d clips", layer, len(found_clips))
+                    
+                    # Send success progress update
+                    await ws_manager.send_progress(project_id, {
+                        "type": "smart_search_complete",
+                        "layer": layer,
+                        "found": True,
+                        "clips_count": len(found_clips)
+                    })
+                    
+                    # Add found clips to the pool text and re-run Claude
+                    extra_pool_lines = []
+                    for i, clip in enumerate(found_clips[:5]):  # Top 5 found clips
+                        line = (
+                            f"[SMART SEARCH MATCH - Layer {layer}] [P{len(clip_pool_sorted) + i}] "
+                            f"{clip.get('start_time', 0):.1f}-{clip.get('end_time', 0):.1f}s | "
+                            f"q:{clip.get('visual_quality', 5)}/10 | "
+                            f"src:{clip.get('source_video', '?')[:8]} | "
+                            f"{clip.get('description', 'Found clip')}"
+                        )
+                        extra_pool_lines.append(line)
+                        # Add to clip_pool_sorted for reference resolution
+                        clip_pool_sorted.append(clip)
+                    
+                    # Rebuild prompt with extra clips
+                    enhanced_pool_text = pool_text + "\n\n" + "\n".join(extra_pool_lines)
+                    
+                    enhanced_prompt = f"""RECIPE: {recipe_type}
+TARGET DURATION: {target_duration}s
+
+CURRENT TIMELINE ({len(included_clips)} clips, {current_duration:.0f}s):
+{timeline_text}
+
+CLIP POOL (unused, ranked by quality):
+{enhanced_pool_text}
+{history_text}
+USER REQUEST: "{body.instruction}"
+
+Use the apply_edit tool. Reference clips by their T/P index. You may adjust start_time/end_time within a clip's range."""
+                    
+                    # Re-call Claude with enhanced pool
+                    logger.info("Re-calling Claude with %d smart-found clips added to pool", len(found_clips))
+                    response = await client.messages.create(
+                        model="claude-sonnet-4-5",
+                        max_tokens=2048,
+                        system=REFINE_SYSTEM_PROMPT,
+                        tools=[REFINE_TOOL],
+                        tool_choice={"type": "tool", "name": "apply_edit"},
+                        messages=[{"role": "user", "content": enhanced_prompt}],
+                    )
+                    
+                    # Extract new tool result
+                    tool_block = next(
+                        (b for b in response.content if b.type == "tool_use"), None
+                    )
+                    if tool_block:
+                        result = tool_block.input
+                        mode = result.get("mode", "apply")
+                        changes_summary = result.get("summary", "")
+                        warnings = result.get("warnings", [])
+                        logger.info("Re-run with smart clips: mode=%s, summary=%s", mode, changes_summary[:80])
+                    
+                elif search_result["type"] == "not_found":
+                    # Layer 5: Honest admission
+                    logger.info("Smart search exhausted all layers: not found")
+                    
+                    # Send not found progress update
+                    await ws_manager.send_progress(project_id, {
+                        "type": "smart_search_complete",
+                        "found": False
+                    })
+                    
+                    # Return Layer 5 honest admission to frontend
+                    not_found_summary = search_result.get("summary", "Couldn't find that clip.")
+                    suggestions = search_result.get("suggestions", [])
+                    
+                    new_version = plan.get("version", 1)
+                    user_msg = {
+                        "id": str(uuid4()),
+                        "role": "user",
+                        "text": body.instruction,
+                        "version": new_version,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "undone": False
+                    }
+                    assistant_msg = {
+                        "id": str(uuid4()),
+                        "role": "assistant",
+                        "text": not_found_summary,
+                        "version": new_version,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "undone": False,
+                        "is_not_found": True,
+                        "suggestions": suggestions,
+                    }
+                    
+                    await db.edit_plans.update_one(
+                        {"project_id": project_id},
+                        {"$push": {"conversation": {"$each": [user_msg, assistant_msg]}}},
+                    )
+                    
+                    return {
+                        "type": "not_found",
+                        "summary": not_found_summary,
+                        "suggestions": suggestions,
+                        "conversation_messages": [user_msg, assistant_msg],
+                    }
+            
+            except Exception as e:
+                logger.warning("Smart search failed: %s", e, exc_info=True)
+                # Continue with original Claude result if smart search fails
+                await ws_manager.send_progress(project_id, {
+                    "type": "smart_search_error",
+                    "message": "Search failed, using original results"
+                })
         
         # Branch on mode: propose vs apply
         if mode == "propose":
@@ -1245,3 +1452,104 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
     except Exception as e:
         logger.exception("Failed to refine edit plan")
         raise HTTPException(500, f"Refine failed: {str(e)}")
+
+
+@router.post("/smart-search")
+async def smart_search_clip(project_id: str, body: SmartSearchRequest, request: Request):
+    """Explicitly trigger smart clip finding for manual search."""
+    db = _db(request)
+    
+    # Get current edit plan
+    plan = await db.edit_plans.find_one({"project_id": project_id})
+    if not plan:
+        raise HTTPException(404, "No edit plan found")
+    
+    timeline_clips = plan.get("timeline", {}).get("clips", [])
+    clip_pool = plan.get("clip_pool", [])
+    
+    # Combine all clips for comprehensive search
+    all_clips = timeline_clips + clip_pool
+    
+    logger.info("Smart search triggered manually for project %s, query: '%s'", project_id, body.query)
+    
+    # Send initial progress update
+    await ws_manager.send_progress(project_id, {
+        "type": "smart_search_progress",
+        "layer": 0,
+        "message": "Starting smart search..."
+    })
+    
+    try:
+        search_result = await smart_find_clip(
+            query=body.query,
+            all_clips=all_clips,
+            project_id=project_id,
+        )
+        
+        if search_result["type"] == "found":
+            found_clips = search_result.get("clips", [])
+            layer = search_result.get("layer", 0)
+            
+            logger.info("Smart search found %d clips at Layer %d", len(found_clips), layer)
+            
+            # Send success progress update
+            await ws_manager.send_progress(project_id, {
+                "type": "smart_search_complete",
+                "layer": layer,
+                "found": True,
+                "clips_count": len(found_clips)
+            })
+            
+            # Enrich clips with thumbnail info
+            enriched_clips = []
+            for clip in found_clips:
+                clip_copy = clip.copy()
+                # Add thumbnail path if available
+                clip_copy["action_id"] = clip.get("clip_id", "")
+                enriched_clips.append(clip_copy)
+            
+            # Optionally add discovered clips to the project's clip pool
+            # (for Layer 3 which creates new clips from gaps)
+            new_clips = [c for c in found_clips if c.get("discovered")]
+            if new_clips:
+                logger.info("Adding %d newly discovered clips to clip pool", len(new_clips))
+                # Append to clip_pool in database
+                await db.edit_plans.update_one(
+                    {"project_id": project_id},
+                    {"$push": {"clip_pool": {"$each": new_clips}}},
+                )
+            
+            return {
+                "type": "found",
+                "layer": layer,
+                "clips": enriched_clips,
+                "clips_count": len(enriched_clips),
+                "message": f"Found {len(enriched_clips)} matching clip(s) at Layer {layer}",
+            }
+        
+        else:
+            # Not found
+            logger.info("Smart search exhausted all layers: not found")
+            
+            # Send not found progress update
+            await ws_manager.send_progress(project_id, {
+                "type": "smart_search_complete",
+                "found": False
+            })
+            
+            return {
+                "type": "not_found",
+                "summary": search_result.get("summary", "Couldn't find that clip."),
+                "suggestions": search_result.get("suggestions", []),
+            }
+    
+    except Exception as e:
+        logger.exception("Smart search failed")
+        
+        # Send error progress update
+        await ws_manager.send_progress(project_id, {
+            "type": "smart_search_error",
+            "message": str(e)
+        })
+        
+        raise HTTPException(500, f"Smart search failed: {str(e)}")
