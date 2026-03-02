@@ -60,20 +60,55 @@ TERMINOLOGY YOU UNDERSTAND:
 - "more satisfying" / "ASMR" = more sizzle, pour, crunch moments
 - "TikTok style" = hook first, fast cuts
 - "the ugly parts" = bad lighting, messy counter
-- "boring part" = low-action footage"""
+- "boring part" = low-action footage
+
+RESPONSE STRATEGY:
+You have two modes: "apply" (execute edit) and "propose" (discuss first).
+
+Use "apply" when:
+- The instruction maps to exactly one clear action
+- References are unambiguous (e.g., "last clip", "the plating shot", a specific T/P ref)
+- The instruction is structural ("make it shorter", "speed up chopping parts", "swap T2 and T5")
+- Only one clip in the pool clearly matches the user's description
+- User is confirming a previous proposal ("yes use P5", "the first one", "haa")
+
+Use "propose" when:
+- A description matches multiple clips with similar relevance ("the salt scene" could be P0 or P1)
+- No clip clearly matches the user's description
+- The instruction would restructure >50% of the timeline
+- The instruction conflicts with cooking video rules and you need to explain the tradeoff
+
+When proposing:
+- Include candidate clip_refs so the frontend can show thumbnails
+- Explain WHY each candidate might match
+- Describe your proposed_action (what you'll do once they confirm)
+- Keep it concise - 2-3 candidates max
+
+IMPORTANT: Bias toward action. When in doubt between a confident apply and a proposal, apply.
+Users prefer fixing a wrong edit (undo takes 1 click) over answering questions.
+Only propose when you genuinely cannot determine user intent.
+
+After a user confirms a proposal, apply immediately - don't re-ask.
+If user says "undo", "nevermind", "cancel" - revert to previous timeline version."""
 
 REFINE_TOOL = {
     "name": "apply_edit",
-    "description": "Apply the video edit changes and provide a cooking-aware summary",
+    "description": "Apply video edit changes or propose candidates for user confirmation",
     "input_schema": {
         "type": "object",
         "properties": {
+            "mode": {
+                "type": "string",
+                "enum": ["apply", "propose"],
+                "description": "apply = execute edit immediately. propose = show candidates and ask user to confirm before editing."
+            },
             "summary": {
                 "type": "string",
-                "description": "1-3 sentence cooking-aware summary of what changed. Reference food/cooking terms, not timecodes. Mention new total duration."
+                "description": "For apply: 1-3 sentence cooking-aware summary of changes. For propose: explain what you found and what you need the user to decide."
             },
             "clips": {
                 "type": "array",
+                "description": "Required for 'apply' mode. The full new timeline.",
                 "items": {
                     "type": "object",
                     "properties": {
@@ -90,11 +125,37 @@ REFINE_TOOL = {
                         "description": {"type": "string"},
                         "source_hint": {
                             "type": "string",
-                            "description": "First 8 chars of source video filename, from src: field"
+                            "description": "First 8 chars of source video filename"
                         }
                     },
                     "required": ["clip_ref", "start_time", "end_time", "speed_factor", "description"]
                 }
+            },
+            "candidates": {
+                "type": "array",
+                "description": "For 'propose' mode: clips the user should choose between. Include clip_ref so frontend can show thumbnails.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "clip_ref": {
+                            "type": "string",
+                            "description": "Reference like P0, P5, T3 etc."
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "What this clip shows"
+                        },
+                        "reason": {
+                            "type": "string", 
+                            "description": "Why this could match what the user asked for"
+                        }
+                    },
+                    "required": ["clip_ref", "description", "reason"]
+                }
+            },
+            "proposed_action": {
+                "type": "string",
+                "description": "For 'propose' mode: describe what you plan to do once user confirms (e.g., 'Place selected clip before T3 (flour adding)')"
             },
             "warnings": {
                 "type": "array",
@@ -102,7 +163,7 @@ REFINE_TOOL = {
                 "description": "Optional warnings about issues or impossible requests"
             }
         },
-        "required": ["summary", "clips"]
+        "required": ["mode", "summary"]
     }
 }
 
@@ -111,6 +172,19 @@ router = APIRouter(prefix="/api/projects/{project_id}/edit-plan", tags=["edit-pl
 
 def _db(request: Request):
     return request.app.state.db
+
+
+def resolve_single_clip_ref(clip_ref: str, timeline_clips: list, pool_clips: list):
+    """Resolve a single T/P reference to its clip data."""
+    if clip_ref.startswith("T") and clip_ref[1:].isdigit():
+        idx = int(clip_ref[1:])
+        if idx < len(timeline_clips):
+            return timeline_clips[idx]
+    elif clip_ref.startswith("P") and clip_ref[1:].isdigit():
+        idx = int(clip_ref[1:])
+        if idx < len(pool_clips):
+            return pool_clips[idx]
+    return None
 
 
 # ---- Models ---- #
@@ -709,23 +783,38 @@ async def refine_edit_plan(project_id: str, body: RefineRequest, request: Reques
         for i, c in enumerate(included_clips)
     ])
     
+    # Extract keywords from user instruction for relevance boost
+    instruction_lower = body.instruction.lower()
+    keywords = [w for w in instruction_lower.split() if len(w) > 2]
+    
+    # Score each pool clip by keyword relevance
+    def keyword_score(clip):
+        desc = clip.get("description", "").lower()
+        return sum(1 for k in keywords if k in desc)
+    
+    # Sort: keyword matches first, then by visual_quality
+    clip_pool_sorted = sorted(
+        clip_pool,
+        key=lambda c: (-keyword_score(c), -c.get("visual_quality", 0))
+    )
+    
     pool_text = "\n".join([
         f"[P{i}] {c.get('start_time', 0):.1f}-{c.get('end_time', 0):.1f}s | "
         f"q:{c.get('visual_quality', 0)}/10 | "
         f"src:{c.get('source_video', '?')[:8]} | "
         f"{c.get('description', 'Action')}"
-        for i, c in enumerate(clip_pool[:20])
+        for i, c in enumerate(clip_pool_sorted[:50])
     ])
     
     current_duration = sum(
         c.get("effective_duration", 0) for c in included_clips
     )
     
-    # Build conversation context (last 3 turns)
+    # Build conversation context (last 5 turns)
     conversation_history = plan.get("conversation", [])
     active_convo = [m for m in conversation_history if not m.get("undone")]
-    # Get last 6 messages (3 user + 3 assistant = 3 turns)
-    recent_msgs = active_convo[-6:]
+    # Get last 10 messages (5 user + 5 assistant = 5 turns)
+    recent_msgs = active_convo[-10:]
     
     history_text = ""
     if recent_msgs:
@@ -773,8 +862,69 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
             raise HTTPException(400, "Claude did not return a valid edit")
         
         result = tool_block.input
-        changes_summary = result.get("summary", f"Updated to {len(result.get('clips', []))} clips")
+        mode = result.get("mode", "apply")
+        changes_summary = result.get("summary", "")
         warnings = result.get("warnings", [])
+        
+        # Branch on mode: propose vs apply
+        if mode == "propose":
+            # Don't render anything - just return the proposal
+            candidates = result.get("candidates", [])
+            
+            # Enrich candidates with thumbnail info
+            enriched_candidates = []
+            for cand in candidates:
+                clip_ref = cand.get("clip_ref", "")
+                source_clip = resolve_single_clip_ref(clip_ref, included_clips, clip_pool_sorted)
+                if source_clip:
+                    cand["start_time"] = source_clip.get("start_time", 0)
+                    cand["end_time"] = source_clip.get("end_time", 0)
+                    cand["visual_quality"] = source_clip.get("visual_quality", 5)
+                    cand["source_video"] = source_clip.get("source_video", "")
+                    # Thumbnail ID for frontend to load
+                    cand["action_id"] = source_clip.get("action_id", "")
+                enriched_candidates.append(cand)
+            
+            # Create conversation messages (user + AI proposal)
+            new_version = plan.get("version", 1)  # Don't bump for proposals
+            
+            user_msg = {
+                "id": str(uuid4()),
+                "role": "user",
+                "text": body.instruction,
+                "version": new_version,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "undone": False
+            }
+            assistant_msg = {
+                "id": str(uuid4()),
+                "role": "assistant",
+                "text": changes_summary,
+                "version": new_version,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "undone": False,
+                "is_proposal": True
+            }
+            
+            # Save conversation (no timeline change)
+            await db.edit_plans.update_one(
+                {"project_id": project_id},
+                {"$push": {"conversation": {"$each": [user_msg, assistant_msg]}}},
+            )
+            
+            logger.info("Refine proposal: %d candidates, summary: %s", 
+                       len(enriched_candidates), changes_summary[:100])
+            
+            return {
+                "type": "proposal",
+                "summary": changes_summary,
+                "candidates": enriched_candidates,
+                "proposed_action": result.get("proposed_action", ""),
+                "warnings": warnings,
+                "conversation_messages": [user_msg, assistant_msg],
+            }
+        
+        # mode == "apply" - execute edit
         raw_clips = result.get("clips", [])
         
         if not raw_clips:
@@ -796,8 +946,8 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
                     source_clip = included_clips[idx]
             elif clip_ref.startswith("P") and clip_ref[1:].isdigit():
                 idx = int(clip_ref[1:])
-                if idx < len(clip_pool):
-                    source_clip = clip_pool[idx]
+                if idx < len(clip_pool_sorted):
+                    source_clip = clip_pool_sorted[idx]
             
             # Fallback: match by timestamp + source hint
             if not source_clip:
