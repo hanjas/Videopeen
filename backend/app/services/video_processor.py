@@ -169,10 +169,15 @@ def select_frames_by_scene(
         ssim_score = compute_ssim_cv2(frames[i], frames[i + 1])
         ssim_scores.append(ssim_score)
     
-    # Compute adaptive threshold: max(0.85, median(all_ssim) - 0.05)
+    # Adaptive threshold: use 25th percentile of SSIM scores
+    # This means only the bottom 25% most different frame pairs are scene breaks
+    # Works for both static tripod (high SSIM) and handheld (lower SSIM)
     median_ssim = float(np.median(ssim_scores))
-    adaptive_threshold = max(0.85, median_ssim - 0.05)
-    logger.info("SSIM adaptive threshold: %.3f (median: %.3f)", adaptive_threshold, median_ssim)
+    p25_ssim = float(np.percentile(ssim_scores, 25))
+    # Threshold should be between p25 and median, biased toward finding real scene changes
+    adaptive_threshold = max(0.50, min(0.92, p25_ssim))
+    logger.info("SSIM adaptive threshold: %.3f (median: %.3f, p25: %.3f)", 
+                adaptive_threshold, median_ssim, p25_ssim)
     
     # Detect scene breaks using two-signal gate
     scene_breaks = [0]  # First frame is always a scene start

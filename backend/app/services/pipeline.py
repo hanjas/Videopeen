@@ -112,7 +112,7 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
             result = await asyncio.to_thread(
                 extract_dense_frames,
                 video_path, frame_dir,
-                frame_interval=2.0,
+                frame_interval=0.5,  # 2fps for SSIM scene selection
                 video_index=ci,
             )
             all_frame_results.append(result)
