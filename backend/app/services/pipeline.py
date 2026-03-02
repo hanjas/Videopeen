@@ -200,6 +200,35 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
         logger.info("Total actions detected: %d across %d videos",
                      len(all_actions), len(video_sources))
 
+        # ------------------------------------------------------------------ #
+        # Reconciliation: Compare detected actions against recipe
+        # ------------------------------------------------------------------ #
+        reconciliation = {}
+        try:
+            from app.services.reconciliation import reconcile_actions_with_recipe
+            
+            reconciliation = await reconcile_actions_with_recipe(
+                all_actions, recipe_context, all_frame_results, video_path_map
+            )
+            
+            # Log findings
+            if reconciliation.get("missing_ingredients"):
+                missing_list = [m["ingredient"] for m in reconciliation["missing_ingredients"]]
+                logger.warning("Reconciliation: %d recipe ingredients not detected: %s",
+                               len(missing_list), missing_list)
+            
+            if reconciliation.get("suspicious_gaps"):
+                logger.info("Reconciliation: %d suspicious gaps found",
+                           len(reconciliation["suspicious_gaps"]))
+            
+            logger.info("Reconciliation: %d/%d ingredients matched (%.1f%% coverage)",
+                       len(reconciliation.get("matched_ingredients", [])),
+                       reconciliation.get("total_ingredients", 0),
+                       reconciliation.get("match_rate", 0))
+        except Exception as e:
+            logger.warning("Reconciliation failed (non-blocking): %s", e)
+            reconciliation = {"status": "error", "error": str(e)}
+
         # Save actions to DB
         for action in all_actions:
             doc = {
@@ -391,6 +420,7 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
             "editor_notes": edit_result.get("editor_notes", ""),
             "coverage_pct": edit_result.get("coverage_pct"),
             "missing_steps": edit_result.get("missing_steps", []),
+            "reconciliation": reconciliation,  # Recipe vs detected actions comparison
             "video_path_map": video_path_map,
             "history": [{
                 "version": 1,
