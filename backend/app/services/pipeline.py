@@ -284,9 +284,21 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
             best_keyframes = best_keyframes[:15]
 
         target_duration = project.get("output_duration", 60)
+        transition_type = project.get("transition_type", "fade")
+        transition_duration = project.get("transition_duration", 0.5)
+
+        # Compensate for transition time loss in edit planning
+        # Each xfade transition eats transition_duration from total output
+        # Estimate ~15-25 clips for a 60s video → ~10-12s of transition loss
+        # Inflate target so Claude generates enough content
+        estimated_clips = max(10, int(target_duration / 3))  # ~3s avg per clip
+        transition_time_loss = (estimated_clips - 1) * transition_duration if transition_type != "none" else 0
+        planning_target = target_duration + transition_time_loss
+        logger.info("Edit planning: target=%ds, transition_loss=%.1fs, planning_target=%.1fs",
+                    target_duration, transition_time_loss, planning_target)
 
         edit_result = await create_edit_plan(
-            recipe_context, all_actions, target_duration,
+            recipe_context, all_actions, planning_target,
             video_sources, best_keyframes,
         )
 
@@ -564,10 +576,6 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
         output_filename = f"{project_id}_final.mp4"
         output_path = os.path.join(settings.output_dir, output_filename)
 
-        # Get transition settings from project
-        transition_type = project.get("transition_type", "fade")
-        transition_duration = project.get("transition_duration", 0.5)
-        
         # Render the video with aspect ratio and transitions
         await asyncio.to_thread(
             stitch_clips_v2, 
