@@ -890,8 +890,9 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
                     cand["end_time"] = source_clip.get("end_time", 0)
                     cand["visual_quality"] = source_clip.get("visual_quality", 5)
                     cand["source_video"] = source_clip.get("source_video", "")
-                    # Thumbnail ID for frontend to load
-                    cand["action_id"] = source_clip.get("action_id", "")
+                    cand["clip_id"] = source_clip.get("clip_id", "")
+                    cand["action_id"] = source_clip.get("clip_id", "")  # Use clip_id for thumbnail lookup
+                    cand["thumbnail_path"] = source_clip.get("thumbnail_path", "")
                 enriched_candidates.append(cand)
             
             # Create conversation messages (user + AI proposal)
