@@ -912,7 +912,9 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
                 "version": new_version,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "undone": False,
-                "is_proposal": True
+                "is_proposal": True,
+                "candidates": enriched_candidates,
+                "proposed_action": result.get("proposed_action", ""),
             }
             
             # Save conversation (no timeline change)

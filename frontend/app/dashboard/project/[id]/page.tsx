@@ -258,10 +258,12 @@ export default function ProjectPage() {
           .filter((m) => !m.undone)
           .map((m) => ({
             id: m.id,
-            type: m.role === "user" ? "user" as const : "system" as const,
+            type: m.is_proposal ? "proposal" as const : m.role === "user" ? "user" as const : "system" as const,
             text: m.text,
             timestamp: new Date(m.timestamp).getTime(),
             version: m.version,
+            candidates: m.candidates,
+            proposed_action: m.proposed_action,
           }));
 
         setConversation(messages);
