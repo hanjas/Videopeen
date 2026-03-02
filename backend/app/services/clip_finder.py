@@ -27,6 +27,7 @@ from app.services.video_analyzer import (
     _build_async_client,
     _encode_image,
     _resolve_api_key,
+    detect_actions_batch,
 )
 
 logger = logging.getLogger(__name__)
@@ -891,6 +892,373 @@ async def targeted_rescan(
 
 
 # ---------------------------------------------------------------------------
+# Layer 4: Full Re-Detection
+# ---------------------------------------------------------------------------
+
+ENHANCED_DETECTION_PROMPT = """Analyze these cooking video frames and identify ALL distinct cooking actions.
+Pay SPECIAL ATTENTION to any moment involving: {query}
+
+For EACH action, provide:
+- action: specific description (be precise about ingredients, spices, tools)
+- start_frame: frame number where action begins
+- end_frame: frame number where action ends  
+- confidence: 0.0-1.0
+
+Be as specific as possible with descriptions. Instead of "stirring pot", say "stirring curry with wooden spoon" or "adding garam masala to pot while stirring".
+Label spice/ingredient additions SPECIFICALLY by name when visible.
+
+Return JSON array of actions."""
+
+
+def _clips_overlap(clip1: dict, clip2: dict, overlap_threshold: float = 0.5) -> bool:
+    """Check if two clips have significant time overlap (>= threshold).
+    
+    Args:
+        clip1: First clip dict with start_time and end_time
+        clip2: Second clip dict with start_time and end_time
+        overlap_threshold: Fraction of overlap to consider significant (default 0.5 = 50%)
+        
+    Returns:
+        True if clips overlap by >= threshold
+    """
+    # Must be from same source video
+    if clip1.get("source_video") != clip2.get("source_video"):
+        return False
+    
+    start1, end1 = clip1.get("start_time", 0), clip1.get("end_time", 0)
+    start2, end2 = clip2.get("start_time", 0), clip2.get("end_time", 0)
+    
+    # Calculate overlap
+    overlap_start = max(start1, start2)
+    overlap_end = min(end1, end2)
+    overlap_duration = max(0, overlap_end - overlap_start)
+    
+    # Calculate shortest clip duration
+    duration1 = end1 - start1
+    duration2 = end2 - start2
+    min_duration = min(duration1, duration2)
+    
+    if min_duration <= 0:
+        return False
+    
+    overlap_fraction = overlap_duration / min_duration
+    return overlap_fraction >= overlap_threshold
+
+
+async def _extract_frames_from_video(
+    video_path: str,
+    output_dir: Path,
+    frame_interval: float = 2.0,
+) -> tuple[list[str], list[float]]:
+    """Extract frames from video at regular intervals.
+    
+    Args:
+        video_path: Path to video file
+        output_dir: Directory to save frames
+        frame_interval: Seconds between frames (default 2.0)
+        
+    Returns:
+        (frame_paths, timestamps) tuples
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get video duration
+    duration = await _get_video_duration(video_path)
+    if duration <= 0:
+        logger.warning(f"Could not determine duration for {video_path}")
+        return [], []
+    
+    # Calculate number of frames
+    num_frames = int(duration / frame_interval) + 1
+    
+    frame_paths = []
+    timestamps = []
+    
+    try:
+        for i in range(num_frames):
+            timestamp = i * frame_interval
+            if timestamp > duration:
+                break
+            
+            output_path = output_dir / f"frame_{i:04d}.jpg"
+            
+            # Skip if frame already exists (cached)
+            if output_path.exists():
+                frame_paths.append(str(output_path))
+                timestamps.append(timestamp)
+                continue
+            
+            # Extract frame using ffmpeg
+            cmd = [
+                "ffmpeg",
+                "-ss", str(timestamp),
+                "-i", video_path,
+                "-frames:v", "1",
+                "-q:v", "2",
+                "-y",
+                str(output_path)
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0 and output_path.exists():
+                frame_paths.append(str(output_path))
+                timestamps.append(timestamp)
+        
+        logger.info(f"Extracted {len(frame_paths)} frames from {video_path} (duration: {duration:.1f}s)")
+        return frame_paths, timestamps
+    
+    except Exception as e:
+        logger.error(f"Failed to extract frames from {video_path}: {e}")
+        return [], []
+
+
+async def full_redetect(
+    query: str,
+    all_clips: list[dict],
+    project_id: str,
+) -> list[dict]:
+    """Layer 4: Full re-detection with enhanced prompt.
+    
+    1. Identify source videos from project
+    2. Re-run frame extraction + action detection with enhanced prompt
+    3. Enhanced prompt includes: "Pay special attention to: {query}"
+    4. Diff new detections against existing clips
+    5. Return only NEW clips not already in the pool
+    
+    Args:
+        query: User's search query
+        all_clips: All existing clips in the project
+        project_id: Project ID to locate video files
+        
+    Returns:
+        List of newly discovered clips not in all_clips
+    """
+    logger.info(f"Layer 4: Starting full re-detection for query: '{query}'")
+    
+    # Get all source videos from project
+    upload_path = Path(settings.upload_dir) / project_id
+    if not upload_path.exists():
+        logger.warning(f"Upload directory not found: {upload_path}")
+        return []
+    
+    # Find all video files
+    video_files = []
+    for ext in [".mp4", ".mov", ".avi", ".mkv"]:
+        video_files.extend(upload_path.glob(f"*{ext}"))
+    
+    if not video_files:
+        logger.warning(f"No video files found in {upload_path}")
+        return []
+    
+    logger.info(f"Found {len(video_files)} video files for re-detection")
+    
+    # Set up frames directory
+    frames_dir = upload_path / "frames"
+    frames_dir.mkdir(exist_ok=True)
+    
+    # Recipe context for detection (minimal)
+    recipe_context = {
+        "dish_name": "Cooking video",
+        "recipe_steps": [f"Find: {query}"],
+    }
+    
+    all_new_clips = []
+    
+    try:
+        # Process each video with timeout
+        for video_file in video_files:
+            video_name = video_file.name
+            logger.info(f"Re-detecting in {video_name}")
+            
+            # Check for cached frames
+            video_frames_dir = frames_dir / video_file.stem
+            
+            # Extract frames (will reuse cached ones if available)
+            frame_paths, timestamps = await _extract_frames_from_video(
+                str(video_file),
+                video_frames_dir,
+                frame_interval=2.0,  # One frame every 2 seconds
+            )
+            
+            if not frame_paths:
+                logger.warning(f"No frames extracted from {video_name}")
+                continue
+            
+            logger.info(f"Using {len(frame_paths)} frames for re-detection ({len([p for p in frame_paths if Path(p).exists()])} cached)")
+            
+            # Build enhanced system prompt
+            enhanced_system = f"""You are an expert cooking video analyst analyzing frames to find specific content.
+
+SEARCH TARGET: "{query}"
+
+Pay SPECIAL ATTENTION to any moment that matches or relates to this search target.
+Identify ALL distinct cooking actions, but prioritize actions related to the search target.
+
+For each action:
+- Provide a specific, detailed description
+- Note if it relates to the search target
+- Identify precise start and end frame numbers
+- Rate confidence 0.0-1.0"""
+            
+            # Run detection in batches (reuse existing batch logic)
+            batch_size = 15
+            n_frames = len(frame_paths)
+            n_batches = max(1, (n_frames + batch_size - 1) // batch_size)
+            
+            detected_actions = []
+            
+            for batch_idx in range(n_batches):
+                start_idx = batch_idx * batch_size
+                end_idx = min(start_idx + batch_size, n_frames)
+                batch_paths = frame_paths[start_idx:end_idx]
+                batch_timestamps = timestamps[start_idx:end_idx]
+                
+                # Build enhanced prompt for this batch
+                ts_text = ", ".join(f"{t:.1f}s" for t in batch_timestamps)
+                
+                prompt = f"""Analyze these {len(batch_timestamps)} consecutive frames from a cooking video.
+
+SPECIAL SEARCH TARGET: "{query}"
+
+Frame timestamps: [{ts_text}]
+
+Identify every distinct ACTION in these frames, paying SPECIAL ATTENTION to anything matching "{query}".
+
+For each action:
+- What exactly is happening (be VERY specific if it relates to "{query}")
+- Which frames show this action
+- Confidence 0.0-1.0 (higher if it matches the search target)
+
+Return JSON:
+{{
+  "actions": [
+    {{
+      "description": "<specific description>",
+      "start_time": <float seconds>,
+      "end_time": <float seconds>,
+      "confidence": <0.0-1.0>,
+      "matches_query": <true/false>
+    }}
+  ]
+}}"""
+                
+                # Call API with enhanced prompt
+                api_key = await _resolve_api_key()
+                client = _build_async_client(api_key)
+                
+                content: list[dict] = []
+                for i, (path, ts) in enumerate(zip(batch_paths, batch_timestamps)):
+                    content.append({"type": "text", "text": f"Frame at {ts:.1f}s:"})
+                    try:
+                        content.append(_encode_image(path))
+                    except Exception as e:
+                        logger.warning(f"Failed to encode {path}: {e}")
+                
+                content.append({"type": "text", "text": prompt})
+                
+                try:
+                    response = await asyncio.wait_for(
+                        client.messages.create(
+                            model="claude-sonnet-4-5-20250514",  # High quality for re-detection
+                            max_tokens=2000,
+                            messages=[{"role": "user", "content": content}],
+                        ),
+                        timeout=30.0,
+                    )
+                    
+                    text = response.content[0].text
+                    
+                    # Parse JSON response
+                    import re
+                    cleaned = re.sub(r'```json\s*', '', text)
+                    cleaned = re.sub(r'```\s*', '', cleaned).strip()
+                    
+                    try:
+                        result = json.loads(cleaned)
+                    except json.JSONDecodeError:
+                        # Try to extract JSON object
+                        start = cleaned.find('{')
+                        if start != -1:
+                            depth = 0
+                            for i in range(start, len(cleaned)):
+                                if cleaned[i] == '{': depth += 1
+                                elif cleaned[i] == '}':
+                                    depth -= 1
+                                    if depth == 0:
+                                        result = json.loads(cleaned[start:i+1])
+                                        break
+                        else:
+                            logger.warning(f"Failed to parse batch {batch_idx} response")
+                            continue
+                    
+                    # Collect actions from this batch
+                    for action in result.get("actions", []):
+                        action["source_video"] = video_name
+                        # Fix zero-duration clips
+                        start = action.get("start_time", 0)
+                        end = action.get("end_time", 0)
+                        if end <= start:
+                            action["start_time"] = max(0, start - 1.0)
+                            action["end_time"] = start + 1.0
+                        detected_actions.append(action)
+                
+                except asyncio.TimeoutError:
+                    logger.warning(f"Batch {batch_idx} timed out after 30s")
+                except Exception as e:
+                    logger.warning(f"Batch {batch_idx} failed: {e}")
+            
+            logger.info(f"Re-detected {len(detected_actions)} actions in {video_name}")
+            
+            # Filter for NEW clips that don't overlap with existing ones
+            for action in detected_actions:
+                # Convert action to clip format
+                new_clip = {
+                    "clip_id": str(uuid.uuid4()),
+                    "source_video": video_name,
+                    "start_time": action.get("start_time", 0),
+                    "end_time": action.get("end_time", 0),
+                    "description": action.get("description", ""),
+                    "confidence": action.get("confidence", 0.5),
+                    "matches_query": action.get("matches_query", False),
+                    "visual_quality": 7,  # Assume decent quality
+                    "discovered": True,
+                    "discovery_layer": 4,
+                }
+                
+                # Check if this clip significantly overlaps with any existing clip
+                is_new = True
+                for existing_clip in all_clips:
+                    if _clips_overlap(new_clip, existing_clip, overlap_threshold=0.5):
+                        is_new = False
+                        break
+                
+                if is_new:
+                    all_new_clips.append(new_clip)
+        
+        logger.info(f"Layer 4: Found {len(all_new_clips)} NEW clips after filtering overlaps")
+        
+        # Sort by confidence/query match
+        all_new_clips.sort(
+            key=lambda c: (c.get("matches_query", False), c.get("confidence", 0)),
+            reverse=True
+        )
+        
+        return all_new_clips
+    
+    except asyncio.TimeoutError:
+        logger.warning("Layer 4 full re-detection timed out after 120s")
+        return all_new_clips
+    except Exception as e:
+        logger.error(f"Layer 4 full re-detection failed: {e}")
+        return all_new_clips
+
+
+# ---------------------------------------------------------------------------
 # Main Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -902,19 +1270,20 @@ async def smart_find_clip(
 ) -> dict[str, Any]:
     """Main entry point for smart clip finding. Escalates through layers.
     
-    Current implementation: Layer 0 → Layer 2 → Layer 3 → Layer 5
+    Current implementation: Layer 0 → Layer 2 → Layer 3 → Layer 4 → Layer 5
     - Layer 0: Fast regex/keyword text search
-    - Layer 2: Visual re-check with Claude vision (NEW in task 015)
+    - Layer 2: Visual re-check with Claude vision
     - Layer 3: Gap scanning + generic clip re-scan
+    - Layer 4: Full re-detection with enhanced prompt
     - Layer 5: Honest admission when nothing found
     
     Args:
         query: User's search query (e.g., "the garam masala scene")
         all_clips: List of all available clips in the project
-        project_id: Project ID for locating video files (required for Layers 2-3)
+        project_id: Project ID for locating video files (required for Layers 2-4)
         
     Returns:
-        Success: {"type": "found", "clips": [...], "layer": 0|2|3}
+        Success: {"type": "found", "clips": [...], "layer": 0|2|3|4}
         Failure: {"type": "not_found", "summary": "...", "suggestions": [...]}
     """
     log_prefix = f"[Project {project_id}]" if project_id else ""
@@ -983,8 +1352,38 @@ async def smart_find_clip(
                 "clips": discovered,
                 "layer": 3,
             }
+        
+        logger.info(f"{log_prefix} Layer 3 FAILED: no new clips discovered")
     else:
         logger.debug(f"{log_prefix} Skipping Layer 3: no project_id provided")
+    
+    # Layer 4: Full re-detection with enhanced prompt
+    if project_id:
+        logger.debug(f"{log_prefix} Attempting Layer 4: full re-detection with enhanced prompt")
+        
+        try:
+            # Run with timeout
+            new_clips = await asyncio.wait_for(
+                full_redetect(query, all_clips, project_id),
+                timeout=120.0,
+            )
+            
+            if new_clips:
+                logger.info(f"{log_prefix} Layer 4 SUCCESS: found {len(new_clips)} new clips")
+                return {
+                    "type": "found",
+                    "clips": new_clips,
+                    "layer": 4,
+                }
+            
+            logger.info(f"{log_prefix} Layer 4 FAILED: no new clips found")
+        
+        except asyncio.TimeoutError:
+            logger.warning(f"{log_prefix} Layer 4 timed out after 120s")
+        except Exception as e:
+            logger.error(f"{log_prefix} Layer 4 failed: {e}")
+    else:
+        logger.debug(f"{log_prefix} Skipping Layer 4: no project_id provided")
     
     # No matches found → Layer 5: Honest admission
     logger.info(f"{log_prefix} All layers exhausted, returning not_found response")
