@@ -89,7 +89,13 @@ Users prefer fixing a wrong edit (undo takes 1 click) over answering questions.
 Only propose when you genuinely cannot determine user intent.
 
 After a user confirms a proposal, apply immediately - don't re-ask.
-If user says "undo", "nevermind", "cancel" - revert to previous timeline version."""
+If user says "undo", "nevermind", "cancel" - revert to previous timeline version.
+
+CRITICAL RULE - CLIPS ARRAY:
+When using mode="apply", you MUST ALWAYS include the COMPLETE clips array with ALL timeline clips.
+Even if the user says "ok", "proceed", "looks good", "confirm" — you must return the full current timeline in the clips array.
+If no changes are needed, return all current T-clips exactly as they are.
+NEVER return mode="apply" with an empty clips array. That will break the system."""
 
 REFINE_TOOL = {
     "name": "apply_edit",
@@ -980,8 +986,12 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
                     "conversation_messages": [user_msg, assistant_msg],
                 }
             
-            # If truly no clips and no candidates, return error as chat message instead of 500
-            logger.warning("Claude returned empty timeline with no candidates")
+            # If truly no clips and no candidates, check if this is a "keep current" confirmation
+            logger.warning("Claude returned empty timeline with no candidates, summary: %s", changes_summary[:100])
+            
+            # If summary suggests confirmation/no-change, just acknowledge without error
+            confirm_keywords = ["ready", "confirmed", "keeping", "no change", "looks good", "proceed"]
+            is_confirmation = any(kw in changes_summary.lower() for kw in confirm_keywords)
             new_version = plan.get("version", 1)
             user_msg = {
                 "id": str(uuid4()),
