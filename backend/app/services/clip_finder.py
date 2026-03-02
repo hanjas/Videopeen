@@ -43,12 +43,26 @@ def _normalize_text(text: str) -> str:
     return re.sub(r'[^\w\s]', '', text.lower()).strip()
 
 
+_STOP_WORDS = {
+    "the", "this", "that", "with", "from", "into", "onto", "like", "looks",
+    "add", "added", "adding", "put", "puts", "putting", "get", "got",
+    "not", "none", "can", "could", "should", "would", "will",
+    "video", "clip", "shot", "scene", "part", "moment", "show", "showing",
+    "find", "search", "look", "looking", "want", "need", "missing",
+    "wrong", "right", "good", "bad", "yes", "use", "using",
+    "where", "when", "what", "which", "who", "how", "why",
+    "has", "have", "had", "was", "were", "are", "been",
+    "some", "any", "all", "more", "very", "just", "also",
+    "make", "made", "color", "colour",
+}
+
+
 def _extract_keywords(query: str) -> list[str]:
-    """Extract keywords from query: words > 2 chars, lowercased."""
+    """Extract keywords from query: words > 2 chars, stop words removed."""
     normalized = _normalize_text(query)
     words = normalized.split()
-    # Filter words longer than 2 characters
-    keywords = [w for w in words if len(w) > 2]
+    # Filter words longer than 2 characters AND not in stop words
+    keywords = [w for w in words if len(w) > 2 and w not in _STOP_WORDS]
     return keywords
 
 
@@ -85,6 +99,10 @@ async def find_clips_by_text(query: str, all_clips: list[dict]) -> list[dict]:
     
     logger.info(f"find_clips_by_text: searching for keywords: {keywords}")
     
+    # Require meaningful match: at least 50% of keywords or 2, whichever is higher
+    # This prevents generic single-word matches from blocking escalation to visual layers
+    min_score = max(1, round(len(keywords) * 0.5)) if len(keywords) <= 2 else max(2, round(len(keywords) * 0.5))
+    
     # Score each clip
     scored_clips = []
     for clip in all_clips:
@@ -93,7 +111,7 @@ async def find_clips_by_text(query: str, all_clips: list[dict]) -> list[dict]:
             continue
         
         score = _count_keyword_matches(description, keywords)
-        if score > 0:
+        if score >= min_score:
             # Make a copy so we don't mutate the original
             clip_copy = clip.copy()
             clip_copy["_search_score"] = score
@@ -102,7 +120,7 @@ async def find_clips_by_text(query: str, all_clips: list[dict]) -> list[dict]:
     # Sort by score descending
     scored_clips.sort(key=lambda c: c.get("_search_score", 0), reverse=True)
     
-    logger.info(f"find_clips_by_text: found {len(scored_clips)} matching clips")
+    logger.info(f"find_clips_by_text: found {len(scored_clips)} matching clips (min_score={min_score:.1f}, keywords={keywords})")
     return scored_clips
 
 

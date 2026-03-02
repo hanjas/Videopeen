@@ -60,11 +60,11 @@ def test_extract_keywords():
     keywords = _extract_keywords("garam masala scene")
     assert "garam" in keywords
     assert "masala" in keywords
-    assert "scene" in keywords
+    assert "scene" not in keywords  # stop word
     
-    # Filter short words (> 2 chars only)
+    # Filter short words (> 2 chars) and stop words
     keywords = _extract_keywords("add in at spice to pot")
-    assert "add" in keywords
+    assert "add" not in keywords  # stop word
     assert "in" not in keywords   # 2 chars, filtered
     assert "at" not in keywords   # 2 chars, filtered
     assert "to" not in keywords   # 2 chars, filtered
@@ -73,7 +73,7 @@ def test_extract_keywords():
     
     # Case insensitive
     keywords = _extract_keywords("ADDING Turmeric")
-    assert "adding" in keywords
+    assert "adding" not in keywords  # stop word
     assert "turmeric" in keywords
     
     print("✓ test_extract_keywords passed")
