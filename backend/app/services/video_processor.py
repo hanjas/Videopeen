@@ -504,8 +504,9 @@ def extract_dense_frames(
     logger.info("Extracted %d frames from %s (%.1fs)", 
                 total_extracted, os.path.basename(video_path), duration)
     
-    # Apply SSIM scene selection
-    if total_extracted > 1:
+    # Apply SSIM scene selection (configurable)
+    from app.config import settings as _settings
+    if _settings.ssim_filtering_enabled and total_extracted > 1:
         filtered_paths, filtered_timestamps, scene_count = select_frames_by_scene(
             frame_paths,
             frame_timestamps,
@@ -513,6 +514,8 @@ def extract_dense_frames(
         )
         total_filtered = len(filtered_paths)
     else:
+        if not _settings.ssim_filtering_enabled:
+            logger.info("SSIM filtering disabled, keeping all %d frames", total_extracted)
         filtered_paths = frame_paths
         filtered_timestamps = frame_timestamps
         total_filtered = total_extracted

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     dedup_enabled: bool = False
     dedup_overlap_threshold: float = 0.7   # 70% overlap = duplicate (was 50%)
     dedup_merge_gap: float = 0.3           # <0.3s gap = fragment (was 1.0s)
+    ssim_filtering_enabled: bool = True    # SSIM scene selection to reduce frames
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
