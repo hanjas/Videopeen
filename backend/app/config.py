@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:5173"
     default_chunk_size: int = 120
     max_upload_size_mb: int = 2048
+    dedup_enabled: bool = True
+    dedup_overlap_threshold: float = 0.7   # 70% overlap = duplicate (was 50%)
+    dedup_merge_gap: float = 0.3           # <0.3s gap = fragment (was 1.0s)
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

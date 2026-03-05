@@ -300,7 +300,7 @@ async def detect_actions_batch(
     return result
 
 
-def _dedup_actions(actions: list[dict], overlap_threshold: float = 0.5) -> list[dict]:
+def _dedup_actions(actions: list[dict], overlap_threshold: float = 0.7, merge_gap: float = 0.3) -> list[dict]:
     """Remove duplicate/overlapping actions from merged batch results.
     
     Two actions are considered duplicates if:
@@ -368,7 +368,7 @@ def _dedup_actions(actions: list[dict], overlap_threshold: float = 0.5) -> list[
                     # Keep a, skip b
                     skip_indices.add(j)
             
-            elif overlap_ratio > 0 or (b_start - a_end) < 1.0:
+            elif overlap_ratio > 0 or (b_start - a_end) < merge_gap:
                 # FRAGMENT: merge into one action (extend a to cover b)
                 action_a["end_time"] = max(a_end, b_end)
                 # Keep the better description
@@ -462,8 +462,15 @@ async def detect_actions_for_video(
     logger.info("Detected %d actions in %s", len(all_actions), video_name)
     
     # Deduplicate overlapping/fragmented actions from parallel batch processing
-    all_actions = _dedup_actions(all_actions)
-    logger.info("After dedup: %d actions in %s", len(all_actions), video_name)
+    if settings.dedup_enabled:
+        all_actions = _dedup_actions(
+            all_actions,
+            overlap_threshold=settings.dedup_overlap_threshold,
+            merge_gap=settings.dedup_merge_gap,
+        )
+        logger.info("After dedup: %d actions in %s", len(all_actions), video_name)
+    else:
+        logger.info("Dedup disabled, keeping all %d actions in %s", len(all_actions), video_name)
     
     return all_actions
 
