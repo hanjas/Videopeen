@@ -258,6 +258,95 @@ async def detect_actions_batch(
     return result
 
 
+def _dedup_actions(actions: list[dict], overlap_threshold: float = 0.5) -> list[dict]:
+    """Remove duplicate/overlapping actions from merged batch results.
+    
+    Two actions are considered duplicates if:
+    1. They're from the same source video
+    2. Their time ranges overlap by >= overlap_threshold (50%)
+    3. They have similar descriptions (optional, for safety)
+    
+    When duplicates found, keep the one with higher visual_quality.
+    When fragments found (adjacent, short gap), merge them.
+    """
+    if not actions:
+        return actions
+    
+    # Sort by start_time
+    sorted_actions = sorted(actions, key=lambda a: a.get("start_time", 0))
+    
+    merged = []
+    skip_indices = set()
+    
+    for i, action_a in enumerate(sorted_actions):
+        if i in skip_indices:
+            continue
+        
+        # Check against next few actions for overlap
+        for j in range(i + 1, min(i + 5, len(sorted_actions))):
+            if j in skip_indices:
+                continue
+            
+            action_b = sorted_actions[j]
+            
+            # Must be same source video
+            if action_a.get("source_video") != action_b.get("source_video"):
+                continue
+            
+            a_start = action_a.get("start_time", 0)
+            a_end = action_a.get("end_time", 0)
+            b_start = action_b.get("start_time", 0)
+            b_end = action_b.get("end_time", 0)
+            
+            # If b starts after a ends + 2s gap, no overlap possible
+            if b_start > a_end + 2.0:
+                break
+            
+            # Calculate overlap
+            overlap_start = max(a_start, b_start)
+            overlap_end = min(a_end, b_end)
+            overlap_duration = max(0, overlap_end - overlap_start)
+            
+            min_duration = min(a_end - a_start, b_end - b_start)
+            if min_duration <= 0:
+                continue
+            
+            overlap_ratio = overlap_duration / min_duration
+            
+            if overlap_ratio >= overlap_threshold:
+                # DUPLICATE: keep higher quality one
+                a_quality = action_a.get("visual_quality", 0)
+                b_quality = action_b.get("visual_quality", 0)
+                
+                if b_quality > a_quality:
+                    # Replace a with b
+                    skip_indices.add(i)
+                    break
+                else:
+                    # Keep a, skip b
+                    skip_indices.add(j)
+            
+            elif overlap_ratio > 0 or (b_start - a_end) < 1.0:
+                # FRAGMENT: merge into one action (extend a to cover b)
+                action_a["end_time"] = max(a_end, b_end)
+                # Keep the better description
+                if len(action_b.get("description", "")) > len(action_a.get("description", "")):
+                    action_a["description"] = action_b["description"]
+                skip_indices.add(j)
+        
+        if i not in skip_indices:
+            merged.append(action_a)
+    
+    # Re-assign sequential action_ids
+    for idx, action in enumerate(merged):
+        action["action_id"] = idx
+    
+    logger.info("Dedup: %d actions → %d actions (%d removed)",
+                len(actions), len(merged), len(actions) - len(merged))
+    
+    return merged
+
+
 async def detect_actions_for_video(
     frame_paths: list[str],
     frame_timestamps: list[float],
@@ -266,17 +355,20 @@ async def detect_actions_for_video(
     batch_size: int = 15,
     on_batch_done: Any = None,
     max_concurrent: int = 5,
+    shared_semaphore: asyncio.Semaphore | None = None,
 ) -> list[dict]:
     """Run action detection across all frames of a video in batches.
     
     Batches run concurrently (up to max_concurrent) for faster processing.
+    When shared_semaphore is provided, it's used instead of creating a per-video one.
+    This allows a global concurrency cap across multiple videos.
     
     Returns merged list of actions across all batches.
     """
     n_frames = len(frame_paths)
     n_batches = max(1, (n_frames + batch_size - 1) // batch_size)
     
-    semaphore = asyncio.Semaphore(max_concurrent)
+    semaphore = shared_semaphore or asyncio.Semaphore(max_concurrent)
     results = [None] * n_batches
     
     async def process_batch(i: int) -> None:
@@ -284,7 +376,7 @@ async def detect_actions_for_video(
             start_idx = i * batch_size
             if i > 0:
                 start_idx -= 1  # Include last frame of previous batch
-            end_idx = min(start_idx + batch_size, n_frames)
+            end_idx = min((i + 1) * batch_size, n_frames)
             batch_paths = frame_paths[start_idx:end_idx]
             batch_timestamps = frame_timestamps[start_idx:end_idx]
             
@@ -313,8 +405,9 @@ async def detect_actions_for_video(
                 end = action.get("end_time", 0)
                 # Fix zero-duration actions: expand to at least 2 seconds
                 if end <= start:
-                    action["start_time"] = max(0, start - 1.0)
-                    action["end_time"] = start + 1.0
+                    mid = start
+                    action["start_time"] = max(0, mid - 1.0)
+                    action["end_time"] = mid + 1.0
                     zero_dur_fixed += 1
                 action["action_id"] = action_id
                 action_id += 1
@@ -323,6 +416,11 @@ async def detect_actions_for_video(
     if zero_dur_fixed:
         logger.info("Fixed %d zero-duration actions (expanded to 2s) in %s", zero_dur_fixed, video_name)
     logger.info("Detected %d actions in %s", len(all_actions), video_name)
+    
+    # Deduplicate overlapping/fragmented actions from parallel batch processing
+    all_actions = _dedup_actions(all_actions)
+    logger.info("After dedup: %d actions in %s", len(all_actions), video_name)
+    
     return all_actions
 
 
@@ -340,14 +438,16 @@ YOUR JOB:
 - Set speed for each clip (normal, fast-forward, slow-motion)
 - Create a video that tells the cooking story within the TARGET DURATION
 
-CRITICAL DURATION RULE:
+CRITICAL DURATION RULE (THIS IS YOUR #1 PRIORITY):
 - Calculate the effective duration of each clip: (end_time - start_time) / speed_factor
 - Keep a RUNNING TOTAL as you add clips
 - STOP adding clips when the running total reaches the target duration
 - The total_effective_duration in your response MUST be within ±5 seconds of the target
-- If the target is 60s, your edit must be 55-65s. NOT 80s. NOT 90s.
-- FEWER clips done well > too many clips that overshoot the target
-- Aim for 10-18 clips total depending on target duration
+- If the target is 90s, your edit MUST be 85-95s. If 120s, MUST be 115-125s. Match the target!
+- Do NOT default to 60s. The target duration is explicitly given - FOLLOW IT.
+- For longer targets (>60s): use MORE clips, use LONGER clips (3-5s instead of 2-3s), include more recipe steps, add more hero/beauty shots, use more slow-mo
+- Estimate clips needed: target_duration / 3.5 = approximate clip count
+- VERIFY your total before responding. If under target, ADD MORE CLIPS.
 
 EDITING RULES:
 1. EVERY ingredient addition must be shown — especially spices, sauces, pastes. Viewers want to see what goes in.
@@ -405,10 +505,12 @@ def _build_editor_prompt(
     return f"""Create an edit plan for this cooking video.
 
 DISH: {recipe_context.get('dish_name', 'Unknown')}
-TARGET DURATION: {target_duration}s (HARD LIMIT: {min_dur}-{max_dur}s. Do NOT exceed {max_dur}s.)
+TARGET DURATION: {target_duration}s (HARD LIMIT: {min_dur}-{max_dur}s. Do NOT go below {min_dur}s or exceed {max_dur}s.)
+ESTIMATED CLIPS NEEDED: ~{int(target_duration / 3.5)} clips
 
 DURATION MATH: For each clip, effective_seconds = (end_time - start_time) / speed_factor
 Keep a running total. STOP adding clips when you approach {target_duration}s.
+WARNING: Do NOT default to 60s. Your target is {target_duration}s. If your total is under {min_dur}s, you MUST add more clips.
 
 RECIPE STEPS:
 {steps_text}
@@ -488,7 +590,7 @@ async def create_edit_plan(
     
     response = await client.messages.create(
         model=settings.text_model,
-        max_tokens=8000,
+        max_tokens=16000,
         system=EDITOR_SYSTEM,
         messages=[{"role": "user", "content": content}],
     )
