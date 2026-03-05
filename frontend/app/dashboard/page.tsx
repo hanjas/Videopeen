@@ -55,6 +55,8 @@ export default function DashboardPage() {
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [transitionType, setTransitionType] = useState("fade");
   const [transitionDuration, setTransitionDuration] = useState(0.5);
+  const [dishName, setDishName] = useState("");
+  const [recipeDetails, setRecipeDetails] = useState("");
   const [generating, setGenerating] = useState(false);
   const [modalError, setModalError] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -88,6 +90,8 @@ export default function DashboardPage() {
     setAspectRatio("16:9");
     setTransitionType("fade");
     setTransitionDuration(0.5);
+    setDishName("");
+    setRecipeDetails("");
     setModalError("");
   };
 
@@ -130,6 +134,8 @@ export default function DashboardPage() {
       // 1. Create project
       const project = await api.createProject({
         name: name.trim() || "Untitled Project",
+        dish_name: dishName.trim(),
+        recipe_details: recipeDetails.trim(),
         output_duration: durationSeconds,
         instructions: style,
         aspect_ratio: aspectRatio,
@@ -364,6 +370,33 @@ export default function DashboardPage() {
                   disabled={generating}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-accent/50 transition-all duration-200 disabled:opacity-50"
                 />
+              </div>
+
+              {/* Dish Name */}
+              <div className="mb-6">
+                <label className="text-sm text-gray-400 block mb-2">Dish Name</label>
+                <input
+                  type="text"
+                  value={dishName}
+                  onChange={(e) => setDishName(e.target.value)}
+                  placeholder="e.g. Chicken Biryani, Pasta Carbonara"
+                  disabled={generating}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-accent/50 transition-all duration-200 disabled:opacity-50"
+                />
+              </div>
+
+              {/* Recipe Steps */}
+              <div className="mb-6">
+                <label className="text-sm text-gray-400 block mb-2">Recipe Steps <span className="text-gray-600">(optional but recommended)</span></label>
+                <textarea
+                  value={recipeDetails}
+                  onChange={(e) => setRecipeDetails(e.target.value)}
+                  placeholder={"1. Marinate chicken with spices\n2. Heat oil and fry onions\n3. Add tomatoes and cook\n4. Add marinated chicken\n5. Cook on low heat\n6. Garnish and serve"}
+                  disabled={generating}
+                  rows={4}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-accent/50 transition-all duration-200 disabled:opacity-50 resize-none"
+                />
+                <p className="text-xs text-gray-600 mt-1">Adding recipe steps helps AI identify ingredients and create better edits</p>
               </div>
 
               {/* Upload Zone */}
