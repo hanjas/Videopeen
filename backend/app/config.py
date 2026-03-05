@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     vision_model: str = "claude-sonnet-4-5-20250514"
     text_model: str = "claude-sonnet-4-5-20250514"
-    fast_vision_model: str = "claude-3-5-haiku-20241022"
+    fast_vision_model: str = "claude-sonnet-4-5-20250514"
     frontend_url: str = "http://localhost:5173"
     default_chunk_size: int = 120
     max_upload_size_mb: int = 2048
