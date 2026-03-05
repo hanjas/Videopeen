@@ -43,7 +43,7 @@ def get_video_duration(video_path: str) -> float:
         "-of", "default=noprint_wrappers=1:nokey=1",
         video_path,
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed: {result.stderr[:200]}")
     return float(result.stdout.strip())
@@ -239,6 +239,7 @@ def select_frames_by_scene(
             selected_indices.add(valid_indices[scene_frame_indices[-1]])
             
             # Interior frames: 1 per 4s
+            step = 1
             interior_frames = scene_frame_indices[1:-1]
             if interior_frames:
                 frames_per_4s = max(1, int(scene_duration / 4.0))
@@ -247,7 +248,7 @@ def select_frames_by_scene(
                     selected_indices.add(valid_indices[interior_frames[i]])
             
             logger.debug("Scene %d: long (%.1fs), keeping first + last + %d interior",
-                        scene_idx, scene_duration, len([i for i in interior_frames[::step]]))
+                        scene_idx, scene_duration, len(interior_frames[::step]))
         
         # Always keep frames at scene boundaries
         if scene_idx > 0:
@@ -479,21 +480,25 @@ def extract_dense_frames(
         pattern,
     ]
     
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         logger.error("Dense frame extraction failed: %s", result.stderr[:300])
         raise RuntimeError(f"Frame extraction failed for {video_path}")
     
     # Collect generated frames
-    for i in range(1, n_frames + 10):  # +10 buffer for rounding
+    consecutive_misses = 0
+    for i in range(1, n_frames + 20):  # +20 buffer for VFR content
         path = os.path.join(output_dir, f"v{video_index:02d}_frame_{i:04d}.jpg")
         if os.path.exists(path):
+            consecutive_misses = 0
             timestamp = (i - 1) / extraction_fps
             if timestamp <= duration + (1.0 / extraction_fps):
                 frame_paths.append(path)
                 frame_timestamps.append(timestamp)
         else:
-            break
+            consecutive_misses += 1
+            if consecutive_misses > 3:
+                break
     
     total_extracted = len(frame_paths)
     logger.info("Extracted %d frames from %s (%.1fs)", 

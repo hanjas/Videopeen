@@ -919,7 +919,7 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
     try:
         response = await client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=2048,
+            max_tokens=8192,
             system=REFINE_SYSTEM_PROMPT,
             tools=[REFINE_TOOL],
             tool_choice={"type": "tool", "name": "apply_edit"},
@@ -1010,7 +1010,7 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
                     logger.info("Re-calling Claude with %d smart-found clips added to pool", len(found_clips))
                     response = await client.messages.create(
                         model="claude-sonnet-4-5",
-                        max_tokens=2048,
+                        max_tokens=8192,
                         system=REFINE_SYSTEM_PROMPT,
                         tools=[REFINE_TOOL],
                         tool_choice={"type": "tool", "name": "apply_edit"},
@@ -1145,6 +1145,39 @@ Use the apply_edit tool. Reference clips by their T/P index. You may adjust star
         
         # mode == "apply" - execute edit
         raw_clips = result.get("clips", [])
+        
+        # CRITICAL FIX: If AI returned apply mode with empty clips but described changes,
+        # re-call with explicit instruction to include the clips array
+        if not raw_clips and not result.get("candidates"):
+            confirm_keywords = ["ready", "confirmed", "keeping", "no change", "looks good", "proceed", "finalized"]
+            is_confirmation = any(kw in changes_summary.lower() for kw in confirm_keywords)
+            
+            if not is_confirmation:
+                # AI described changes but forgot to include clips - retry once
+                logger.warning("AI returned apply with empty clips but described changes, retrying with nudge")
+                retry_prompt = user_prompt + f"\n\nIMPORTANT: You previously responded with summary='{changes_summary}' but EMPTY clips array. You MUST include the COMPLETE new timeline in the clips array. Return ALL clips (T-refs for unchanged, modified as needed). Do NOT return empty clips."
+                try:
+                    retry_response = await client.messages.create(
+                        model="claude-sonnet-4-5",
+                        max_tokens=4096,
+                        system=REFINE_SYSTEM_PROMPT,
+                        tools=[REFINE_TOOL],
+                        tool_choice={"type": "tool", "name": "apply_edit"},
+                        messages=[{"role": "user", "content": retry_prompt}],
+                    )
+                    retry_block = next((b for b in retry_response.content if b.type == "tool_use"), None)
+                    if retry_block:
+                        retry_result = retry_block.input
+                        retry_clips = retry_result.get("clips", [])
+                        if retry_clips:
+                            logger.info("Retry succeeded: got %d clips", len(retry_clips))
+                            raw_clips = retry_clips
+                            result = retry_result
+                            changes_summary = retry_result.get("summary", changes_summary)
+                        else:
+                            logger.warning("Retry also returned empty clips")
+                except Exception as retry_e:
+                    logger.warning("Retry failed: %s", retry_e)
         
         if not raw_clips:
             # If Claude returned no clips but has candidates, treat as propose

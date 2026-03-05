@@ -304,7 +304,7 @@ Respond ONLY with valid JSON (no markdown, no explanation):
         try:
             response = await asyncio.wait_for(
                 client.messages.create(
-                    model="claude-haiku-3-5-20250219",  # Fast and cheap for verification
+                    model=settings.fast_vision_model,  # Fast and cheap for verification
                     max_tokens=1500,
                     messages=[{"role": "user", "content": content}],
                 ),
@@ -447,7 +447,7 @@ async def _get_video_duration(video_path: str) -> float:
             "-of", "default=noprint_wrappers=1:nokey=1",
             video_path
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode == 0 and result.stdout.strip():
             return float(result.stdout.strip())
     except Exception as e:
@@ -604,9 +604,9 @@ Return JSON:
         
         content.append({"type": "text", "text": prompt})
         
-        # Use claude-haiku-3-5 for fast, cost-effective vision
+        # Use fast vision model for cost-effective vision
         response = await client.messages.create(
-            model="claude-3-5-haiku-20241022",
+            model=settings.fast_vision_model,
             max_tokens=500,
             messages=[{"role": "user", "content": content}],
             timeout=30.0,
@@ -756,7 +756,7 @@ async def scan_gaps(
             for _, frame_path in frames:
                 try:
                     os.remove(frame_path)
-                except:
+                except Exception:
                     pass
             
             if result and result.get("found"):
@@ -850,7 +850,7 @@ async def scan_generic_clips(
         for _, frame_path in frames:
             try:
                 os.remove(frame_path)
-            except:
+            except Exception:
                 pass
         
         if result and result.get("found"):
@@ -1182,7 +1182,7 @@ Return JSON:
                 try:
                     response = await asyncio.wait_for(
                         client.messages.create(
-                            model="claude-sonnet-4-5-20250514",  # High quality for re-detection
+                            model=settings.vision_model,  # High quality for re-detection
                             max_tokens=2000,
                             messages=[{"role": "user", "content": content}],
                         ),

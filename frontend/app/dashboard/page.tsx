@@ -503,7 +503,31 @@ export default function DashboardPage() {
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-gray-500 mt-3 text-center">
+                
+                {/* Output Duration */}
+                <label className="text-sm font-semibold text-white mt-5 block mb-2">Target Duration</label>
+                <div className="flex gap-2">
+                  {[
+                    { value: "60s", label: "60s", desc: "TikTok/Reels" },
+                    { value: "90s", label: "90s", desc: "Short-form" },
+                    { value: "180s", label: "3 min", desc: "YouTube Shorts" },
+                    { value: "300s", label: "5 min", desc: "Extended" },
+                  ].map((d) => (
+                    <button
+                      key={d.value}
+                      onClick={() => setDuration(d.value)}
+                      disabled={generating}
+                      className={`flex-1 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        duration === d.value ? "bg-accent text-white" : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                      } disabled:opacity-50 flex flex-col items-center gap-1`}
+                    >
+                      <span className="text-xs font-semibold">{d.label}</span>
+                      <span className="text-[10px] opacity-70">{d.desc}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-xs text-gray-500 mt-4 text-center">
                   AI will use smooth transitions and optimize pacing automatically
                 </p>
               </div>

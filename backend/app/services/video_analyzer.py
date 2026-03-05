@@ -24,6 +24,31 @@ logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
+# API Retry Wrapper
+# --------------------------------------------------------------------------- #
+
+async def _call_claude_with_retry(client, **kwargs):
+    """Call Claude API with exponential backoff retry."""
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            return await client.messages.create(**kwargs)
+        except Exception as e:
+            error_str = str(e)
+            is_retryable = any(code in error_str for code in ["529", "529", "rate_limit", "overloaded"])
+            if hasattr(e, 'status_code'):
+                is_retryable = is_retryable or e.status_code in [429, 500, 502, 503, 529]
+            
+            if is_retryable and attempt < max_retries - 1:
+                wait_time = (2 ** attempt) + (attempt * 0.5)  # 1s, 2.5s, 5s
+                logger.warning("API call failed (attempt %d/%d), retrying in %.1fs: %s", 
+                              attempt + 1, max_retries, wait_time, str(e)[:100])
+                await asyncio.sleep(wait_time)
+            else:
+                raise
+
+
+# --------------------------------------------------------------------------- #
 # Image encoding
 # --------------------------------------------------------------------------- #
 
@@ -196,10 +221,11 @@ async def detect_actions_batch(
     batch_index: int,
     total_batches: int,
     prev_action_hint: str | None = None,
+    api_key: str | None = None,
 ) -> dict:
     """Analyze a batch of consecutive frames to detect actions."""
-    api_key = await _resolve_api_key()
-    client = _get_async_client(api_key)
+    key = api_key or await _resolve_api_key()
+    client = _get_async_client(key)
     
     content: list[dict] = []
     for i, (path, ts) in enumerate(zip(frame_paths, frame_timestamps)):
@@ -215,7 +241,8 @@ async def detect_actions_batch(
     )
     content.append({"type": "text", "text": prompt})
     
-    response = await client.messages.create(
+    response = await _call_claude_with_retry(
+        client,
         model=settings.vision_model,
         max_tokens=2000,
         system=TIMELINE_SYSTEM,
@@ -254,6 +281,21 @@ async def detect_actions_batch(
         return {"actions": [], "batch_summary": "parse_error"}
     
     result = _extract_batch_json(text)
+    
+    # Retry once if parse failed
+    if result.get("batch_summary") == "parse_error":
+        logger.warning("Parse error on batch %d, retrying...", batch_index + 1)
+        response = await _call_claude_with_retry(
+            client,
+            model=settings.vision_model,
+            max_tokens=2000,
+            system=TIMELINE_SYSTEM,
+            messages=[{"role": "user", "content": content}],
+        )
+        text = response.content[0].text
+        result = _extract_batch_json(text)
+        if result.get("batch_summary") == "parse_error":
+            logger.error("Parse error on retry for batch %d, giving up", batch_index + 1)
     
     return result
 
@@ -356,6 +398,7 @@ async def detect_actions_for_video(
     on_batch_done: Any = None,
     max_concurrent: int = 5,
     shared_semaphore: asyncio.Semaphore | None = None,
+    api_key: str | None = None,
 ) -> list[dict]:
     """Run action detection across all frames of a video in batches.
     
@@ -384,6 +427,7 @@ async def detect_actions_for_video(
                 batch_paths, batch_timestamps,
                 recipe_context, video_name,
                 i, n_batches, None,  # No prev_hint when parallel
+                api_key=api_key,
             )
             results[i] = result
             
@@ -557,6 +601,7 @@ async def create_edit_plan(
     target_duration: float,
     video_sources: list[dict],
     best_keyframes: list[tuple[int, str]] | None = None,
+    api_key: str | None = None,
 ) -> dict:
     """Phase 2: Claude creates the full edit plan.
     
@@ -566,12 +611,13 @@ async def create_edit_plan(
         target_duration: Target output duration in seconds
         video_sources: Info about each source video
         best_keyframes: Optional (action_id, frame_path) pairs for visual reference
+        api_key: Optional API key (avoids repeated DB lookups)
     
     Returns:
         Edit plan dict with ordered clips
     """
-    api_key = await _resolve_api_key()
-    client = _get_async_client(api_key)
+    key = api_key or await _resolve_api_key()
+    client = _get_async_client(key)
     
     content: list[dict] = []
     
@@ -588,7 +634,8 @@ async def create_edit_plan(
     prompt = _build_editor_prompt(recipe_context, all_actions, target_duration, video_sources)
     content.append({"type": "text", "text": prompt})
     
-    response = await client.messages.create(
+    response = await _call_claude_with_retry(
+        client,
         model=settings.text_model,
         max_tokens=16000,
         system=EDITOR_SYSTEM,

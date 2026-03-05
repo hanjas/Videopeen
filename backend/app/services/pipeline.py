@@ -21,7 +21,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.config import settings
 from app.models.project import ProjectStatus
 from app.services.video_processor import extract_dense_frames, DenseFrameResult
-from app.services.video_analyzer import detect_actions_for_video, create_edit_plan
+from app.services.video_analyzer import detect_actions_for_video, create_edit_plan, _resolve_api_key
 from app.services.video_stitcher import stitch_clips_v2
 from app.services.proxy_renderer import pre_render_proxy_clips, fast_concat_proxies
 from app.services.thumbnail import get_best_thumbnail_path
@@ -145,6 +145,9 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
         logger.info("Recipe: %s, %d steps", recipe_context["dish_name"],
                      len(recipe_context["recipe_steps"]))
 
+        # Resolve API key once for entire pipeline
+        pipeline_api_key = await _resolve_api_key()
+
         all_actions: list[dict] = []
         video_sources: list[dict] = []
 
@@ -155,7 +158,10 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
         batches_done = 0
         _progress_lock = asyncio.Lock()
 
-        # Process ALL videos in parallel (each video's internal batches also parallel)
+        # Global semaphore: cap total concurrent API calls across ALL videos
+        _global_api_semaphore = asyncio.Semaphore(7)
+
+        # Process ALL videos in parallel (shared semaphore caps total concurrency)
         async def _detect_video(ci: int, frame_result: DenseFrameResult) -> tuple[int, list[dict], dict]:
             video_name = os.path.basename(frame_result.video_path)
 
@@ -177,6 +183,8 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
                 batch_size=15,
                 on_batch_done=_on_batch,
                 max_concurrent=7,
+                shared_semaphore=_global_api_semaphore,
+                api_key=pipeline_api_key,
             )
 
             source_info = {
@@ -300,6 +308,7 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
         edit_result = await create_edit_plan(
             recipe_context, all_actions, planning_target,
             video_sources, best_keyframes,
+            api_key=pipeline_api_key,
         )
 
         edit_plan = edit_result.get("edit_plan", [])
