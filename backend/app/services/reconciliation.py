@@ -267,16 +267,16 @@ async def reconcile_actions_with_recipe(
     recipe_context: dict,
     frame_results: list[Any],  # DenseFrameResult list (not used yet, reserved for future)
     video_path_map: dict[str, str],
+    api_key: str | None = None,
 ) -> dict:
-    """Compare detected actions against recipe to find missing ingredients.
-    
-    This is a pure text-matching service with NO LLM calls.
+    """Compare detected actions against recipe using LLM for smart matching.
     
     Args:
         all_actions: List of detected action dicts
         recipe_context: Recipe with dish_name and recipe_steps
         frame_results: Dense frame extraction results (reserved for future gap re-scan)
         video_path_map: Map of video filename to full path
+        api_key: Optional API key for LLM calls
         
     Returns:
         {
@@ -285,56 +285,146 @@ async def reconcile_actions_with_recipe(
             "suspicious_gaps": [{"start": 129.0, "end": 169.0, "duration": 40.0, ...}],
         }
     """
+    import json
+    
     try:
-        logger.info("Starting reconciliation: %d actions, recipe='%s'",
+        logger.info("Starting LLM reconciliation: %d actions, recipe='%s'",
                     len(all_actions), recipe_context.get("dish_name", "Unknown"))
         
-        # Step 1: Extract ingredients from recipe
-        ingredients = extract_ingredients_from_recipe(recipe_context)
-        
-        if not ingredients:
-            logger.warning("No ingredients extracted from recipe — skipping reconciliation")
+        recipe_steps = recipe_context.get("recipe_steps", [])
+        if not recipe_steps:
             return {
                 "matched_ingredients": [],
                 "missing_ingredients": [],
                 "suspicious_gaps": [],
-                "status": "skipped_no_ingredients",
+                "status": "skipped_no_recipe",
             }
         
-        # Step 2: Match ingredients to actions
-        matched, unmatched = match_ingredients_to_actions(ingredients, all_actions)
-        
-        # Step 3: Find suspicious gaps
+        # Still find suspicious gaps (this is pure logic, no LLM needed)
         gaps = find_suspicious_gaps(all_actions, min_gap_seconds=10.0)
         
-        # Step 4: Generate suggestions for missing ingredients
-        missing_with_suggestions = []
-        for item in unmatched:
-            suggestion = suggest_missing_ingredient_location(
-                item["ingredient"], all_actions, gaps
+        # Build action summary for LLM
+        action_summaries = []
+        for a in all_actions:
+            action_summaries.append(
+                f"[{a['action_id']}] {a.get('start_time', 0):.1f}-{a.get('end_time', 0):.1f}s: "
+                f"{a.get('description', 'unknown')} (type={a.get('action_type', '?')})"
             )
-            missing_with_suggestions.append(suggestion)
         
-        result = {
+        steps_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(recipe_steps))
+        actions_text = "\n".join(action_summaries)
+        
+        prompt = f"""Match detected cooking actions to recipe steps/ingredients.
+
+RECIPE: {recipe_context.get('dish_name', 'Unknown')}
+STEPS:
+{steps_text}
+
+DETECTED ACTIONS:
+{actions_text}
+
+For each ingredient/step in the recipe, find the matching action(s). Consider:
+- Synonyms: "tomatoes" = "tomato", "capsicum" = "bell pepper"
+- Partial matches: "adding red powder" could be "chili powder" or "paprika"
+- Implied ingredients: "making masala paste" implies multiple spices
+
+Return JSON:
+{{
+  "matched": [
+    {{"ingredient": "<name>", "action_id": <int>, "confidence": "high|medium|low"}}
+  ],
+  "missing": [
+    {{"ingredient": "<name>", "suggestion": "<where it might be or why missing>"}}
+  ],
+  "match_rate": <float 0-100>
+}}"""
+        
+        from app.services.video_analyzer import _build_async_client, _resolve_api_key, _call_claude_with_retry
+        from app.config import settings
+        
+        key = api_key or await _resolve_api_key()
+        client = _build_async_client(key)
+        
+        response = await _call_claude_with_retry(
+            client,
+            model=settings.fast_vision_model,
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        
+        text = response.content[0].text
+        
+        # Parse JSON response
+        import re
+        cleaned = re.sub(r'```(?:json)?\s*', '', text).strip()
+        try:
+            result = json.loads(cleaned)
+        except json.JSONDecodeError:
+            # Fallback: try to find JSON object
+            start = cleaned.find('{')
+            if start != -1:
+                depth = 0
+                for i in range(start, len(cleaned)):
+                    if cleaned[i] == '{': depth += 1
+                    elif cleaned[i] == '}':
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                result = json.loads(cleaned[start:i+1])
+                            except json.JSONDecodeError:
+                                result = None
+                            break
+                else:
+                    result = None
+            else:
+                result = None
+        
+        if not result:
+            logger.warning("Failed to parse LLM reconciliation response, falling back to keyword matching")
+            # Fallback to existing keyword matching
+            ingredients = extract_ingredients_from_recipe(recipe_context)
+            matched, unmatched = match_ingredients_to_actions(ingredients, all_actions)
+            return {
+                "matched_ingredients": matched,
+                "missing_ingredients": [{"ingredient": u["ingredient"], "suggestion": "No match found"} for u in unmatched],
+                "suspicious_gaps": gaps[:10],
+                "status": "fallback_keywords",
+                "total_ingredients": len(ingredients),
+                "match_rate": round(len(matched) / len(ingredients) * 100, 1) if ingredients else 0,
+            }
+        
+        matched = result.get("matched", [])
+        missing = result.get("missing", [])
+        match_rate = result.get("match_rate", 0)
+        
+        return {
             "matched_ingredients": matched,
-            "missing_ingredients": missing_with_suggestions,
-            "suspicious_gaps": gaps[:10],  # Limit to top 10
+            "missing_ingredients": missing,
+            "suspicious_gaps": gaps[:10],
             "status": "completed",
-            "total_ingredients": len(ingredients),
-            "match_rate": round(len(matched) / len(ingredients) * 100, 1) if ingredients else 0,
+            "total_ingredients": len(matched) + len(missing),
+            "match_rate": match_rate,
         }
-        
-        logger.info("Reconciliation complete: %d matched, %d missing, %d gaps",
-                    len(matched), len(missing_with_suggestions), len(gaps))
-        
-        return result
         
     except Exception as e:
-        logger.exception("Reconciliation failed: %s", e)
-        return {
-            "matched_ingredients": [],
-            "missing_ingredients": [],
-            "suspicious_gaps": [],
-            "status": "error",
-            "error": str(e),
-        }
+        logger.exception("LLM Reconciliation failed: %s", e)
+        # Fallback to keyword matching on any error
+        try:
+            ingredients = extract_ingredients_from_recipe(recipe_context)
+            matched, unmatched = match_ingredients_to_actions(ingredients, all_actions)
+            return {
+                "matched_ingredients": matched,
+                "missing_ingredients": [{"ingredient": u["ingredient"], "suggestion": "No match found"} for u in unmatched],
+                "suspicious_gaps": find_suspicious_gaps(all_actions, min_gap_seconds=10.0)[:10],
+                "status": "fallback_keywords",
+                "total_ingredients": len(ingredients),
+                "match_rate": round(len(matched) / len(ingredients) * 100, 1) if ingredients else 0,
+            }
+        except Exception:
+            return {
+                "matched_ingredients": [],
+                "missing_ingredients": [],
+                "suspicious_gaps": [],
+                "status": "error",
+                "error": str(e),
+            }

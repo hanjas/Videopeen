@@ -243,7 +243,7 @@ async def detect_actions_batch(
     
     response = await _call_claude_with_retry(
         client,
-        model=settings.vision_model,
+        model=settings.fast_vision_model,
         max_tokens=2000,
         system=TIMELINE_SYSTEM,
         messages=[{"role": "user", "content": content}],
@@ -287,7 +287,7 @@ async def detect_actions_batch(
         logger.warning("Parse error on batch %d, retrying...", batch_index + 1)
         response = await _call_claude_with_retry(
             client,
-            model=settings.vision_model,
+            model=settings.fast_vision_model,
             max_tokens=2000,
             system=TIMELINE_SYSTEM,
             messages=[{"role": "user", "content": content}],

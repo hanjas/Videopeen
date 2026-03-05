@@ -224,7 +224,8 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
             from app.services.reconciliation import reconcile_actions_with_recipe
             
             reconciliation = await reconcile_actions_with_recipe(
-                all_actions, recipe_context, all_frame_results, video_path_map
+                all_actions, recipe_context, all_frame_results, video_path_map,
+                api_key=pipeline_api_key,
             )
             
             # Log findings
