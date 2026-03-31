@@ -1,10 +1,10 @@
-"""Video analyzer V3: Action-based timeline analysis + AI edit decisions.
+"""Video analyzer V3/V7: Action-based timeline analysis + AI edit decisions.
 
-Two phases:
-  Phase 1 — Action Timeline: Send batches of consecutive frames to Claude.
-            Claude identifies discrete actions with precise timestamps.
-  Phase 2 — Edit Decision: Send full action timeline to Claude.
-            Claude acts as editor: picks clips, decides order, sets pacing.
+V3 (legacy): Send batches of consecutive frames to Claude Vision.
+V7 (current): Send compressed video directly to Gemini for analysis.
+
+Phase 1 — Action Timeline: Gemini analyzes full video (V7) or frame batches (V3).
+Phase 2 — Edit Decision: Claude acts as editor (unchanged).
 """
 
 from __future__ import annotations
@@ -14,6 +14,10 @@ import base64
 import json
 import logging
 import os
+import subprocess
+import time
+import urllib.request
+import urllib.error
 from typing import Any
 
 import anthropic
@@ -123,7 +127,408 @@ def _get_async_client(key: str | None = None) -> anthropic.AsyncAnthropic:
 
 
 # --------------------------------------------------------------------------- #
-# Phase 1: Action Timeline Detection
+# Gemini Direct Video Analysis (V7)
+# --------------------------------------------------------------------------- #
+
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com"
+
+
+def _gemini_api_request(url: str, data: dict | None = None, headers: dict | None = None, method: str | None = None) -> tuple[int, dict, dict]:
+    """Simple urllib wrapper for Gemini API calls."""
+    headers = headers or {}
+    body = None
+    if data is not None:
+        body = json.dumps(data).encode()
+        headers.setdefault("Content-Type", "application/json")
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            return resp.status, json.loads(resp.read()), dict(resp.headers)
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode()
+        return e.code, {"error": error_body[:500]}, {}
+
+
+async def compress_video_for_gemini(
+    video_path: str,
+    output_path: str,
+    resolution: int = 720,
+    fps: int = 30,
+    crf: int = 28,
+    max_size_mb: int = 50,
+) -> str:
+    """Compress video for Gemini upload using ffmpeg.
+    
+    Args:
+        video_path: Source video path
+        output_path: Compressed output path  
+        resolution: Target height (720p default)
+        fps: Target framerate
+        crf: Quality factor (higher = smaller, 28 is good balance)
+        max_size_mb: Max file size in MB
+    
+    Returns:
+        Path to compressed video
+    """
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-vf", f"scale=-2:{resolution}",
+        "-r", str(fps),
+        "-c:v", "libx264",
+        "-crf", str(crf),
+        "-preset", "fast",
+        "-c:a", "aac",
+        "-b:a", "64k",
+        output_path,
+    ]
+    
+    start = time.time()
+    result = await asyncio.to_thread(
+        subprocess.run, cmd, capture_output=True, text=True, timeout=300
+    )
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"Video compression failed: {result.stderr[-300:]}")
+    
+    size_mb = os.path.getsize(output_path) / (1024 * 1024)
+    elapsed = time.time() - start
+    logger.info("Compressed %s → %.1f MB in %.1fs", os.path.basename(video_path), size_mb, elapsed)
+    
+    if size_mb > max_size_mb:
+        # Re-compress with higher CRF
+        logger.warning("Compressed file %.1f MB > %d MB limit, re-compressing with CRF %d", 
+                       size_mb, max_size_mb, crf + 5)
+        cmd[cmd.index(str(crf))] = str(crf + 5)
+        result = await asyncio.to_thread(
+            subprocess.run, cmd, capture_output=True, text=True, timeout=300
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Re-compression failed: {result.stderr[-300:]}")
+        size_mb = os.path.getsize(output_path) / (1024 * 1024)
+        logger.info("Re-compressed to %.1f MB", size_mb)
+    
+    return output_path
+
+
+async def upload_to_gemini(video_path: str, api_key: str) -> tuple[str, str]:
+    """Upload video to Gemini Files API using resumable upload.
+    
+    Args:
+        video_path: Path to compressed video
+        api_key: Gemini API key
+    
+    Returns:
+        Tuple of (file_uri, file_name) for use in generateContent
+    """
+    file_size = os.path.getsize(video_path)
+    display_name = os.path.basename(video_path).replace(" ", "_")
+    
+    start = time.time()
+    
+    # Initiate resumable upload
+    init_req = urllib.request.Request(
+        f"{GEMINI_BASE_URL}/upload/v1beta/files?key={api_key}",
+        data=json.dumps({"file": {"display_name": display_name}}).encode(),
+        headers={
+            "X-Goog-Upload-Protocol": "resumable",
+            "X-Goog-Upload-Command": "start",
+            "X-Goog-Upload-Header-Content-Length": str(file_size),
+            "X-Goog-Upload-Header-Content-Type": "video/mp4",
+            "Content-Type": "application/json",
+        },
+    )
+    
+    with urllib.request.urlopen(init_req) as resp:
+        upload_url = resp.headers.get("X-Goog-Upload-URL")
+        if not upload_url:
+            raise RuntimeError("Gemini Files API did not return upload URL")
+    
+    # Upload file data
+    with open(video_path, "rb") as f:
+        file_data = f.read()
+    
+    upload_req = urllib.request.Request(
+        upload_url,
+        data=file_data,
+        headers={
+            "X-Goog-Upload-Command": "upload, finalize",
+            "X-Goog-Upload-Offset": "0",
+            "Content-Length": str(len(file_data)),
+        },
+    )
+    
+    with urllib.request.urlopen(upload_req, timeout=120) as resp:
+        upload_result = json.loads(resp.read())
+    
+    file_uri = upload_result.get("file", {}).get("uri")
+    file_name = upload_result.get("file", {}).get("name")
+    
+    elapsed = time.time() - start
+    logger.info("Uploaded %s (%.1f MB) to Gemini in %.1fs → %s", 
+                display_name, file_size / (1024 * 1024), elapsed, file_uri)
+    
+    # Wait for processing
+    wait_start = time.time()
+    while True:
+        status_code, resp_data, _ = await asyncio.to_thread(
+            _gemini_api_request,
+            f"{GEMINI_BASE_URL}/v1beta/{file_name}?key={api_key}",
+        )
+        state = resp_data.get("state", "UNKNOWN")
+        if state == "ACTIVE":
+            logger.info("Gemini file processing complete (%.1fs)", time.time() - wait_start)
+            break
+        elif state == "FAILED":
+            raise RuntimeError(f"Gemini file processing failed: {resp_data}")
+        else:
+            logger.debug("Gemini file state: %s, waiting...", state)
+            await asyncio.sleep(3)
+        
+        if time.time() - wait_start > 120:
+            raise RuntimeError("Gemini file processing timed out (>120s)")
+    
+    return file_uri, file_name
+
+
+async def cleanup_gemini_file(file_name: str, api_key: str) -> None:
+    """Delete uploaded file from Gemini Files API."""
+    try:
+        await asyncio.to_thread(
+            _gemini_api_request,
+            f"{GEMINI_BASE_URL}/v1beta/{file_name}?key={api_key}",
+            method="DELETE",
+        )
+        logger.info("Cleaned up Gemini file: %s", file_name)
+    except Exception as e:
+        logger.warning("Failed to cleanup Gemini file %s: %s", file_name, e)
+
+
+GEMINI_TIMELINE_PROMPT = """You are an expert cooking video analyst. Watch this entire cooking video carefully and identify every distinct cooking action/step with precise timestamps.
+
+RECIPE: {dish_name}
+RECIPE STEPS:
+{recipe_steps}
+
+VIDEO: "{video_name}" ({duration:.1f} seconds)
+
+CRITICAL RULES:
+1. Identify EVERY discrete ACTION — a spice being added, stirring, flipping, pouring, plating, etc.
+2. Each action must have precise START and END timestamps (in seconds, float)
+3. Brief actions (1-3 seconds, like adding a spice) are JUST AS IMPORTANT as long ones
+4. Pay attention to what's IN THE HAND — if the hand holds a spoon with red powder, that's a specific action
+5. Look for TRANSITIONS: hand reaching for next ingredient = new action starting  
+6. Note AUDIO CUES: sizzling, chopping sounds, bubbling, speech
+7. Track COOKING STATE CHANGES: raw → cooked, solid → melted, cold → bubbling
+8. Pauses/idle moments (nothing happening) should be noted as "idle" actions
+9. If ingredients appear that you didn't see being added, mark as "inferred_addition"
+10. Match actions to recipe steps where possible
+
+For each action provide:
+- action_id (sequential integer starting from 0)
+- description (specific: "adding Kashmiri chilli powder with spoon" not just "seasoning")
+- recipe_step (step number from recipe, or null if unclear)
+- start_time (float, seconds)
+- end_time (float, seconds)  
+- action_type: one of "ingredient_add", "mixing", "cooking", "cutting", "plating", "setup", "idle", "transition", "inferred_addition", "presentation"
+- shows_action_moment: true if the clip shows the action happening (hand adding spice) vs just the result
+- visual_quality: 1-10 rating
+- audio_cues: any relevant sounds detected (or null)
+- key_frame_timestamp: timestamp of the single best frame representing this action
+
+Return ONLY valid JSON (no markdown, no explanation):
+{{
+  "actions": [
+    {{
+      "action_id": 0,
+      "description": "...",
+      "recipe_step": null,
+      "start_time": 0.0,
+      "end_time": 0.0,
+      "action_type": "...",
+      "shows_action_moment": true,
+      "visual_quality": 8,
+      "audio_cues": "sizzling" or null,
+      "key_frame_timestamp": 0.0
+    }}
+  ],
+  "video_summary": "brief summary of the full video",
+  "total_actions": 0,
+  "detected_ingredients": ["list of ingredients seen"],
+  "missing_ingredients": ["recipe ingredients NOT observed"]
+}}"""
+
+
+async def detect_actions_gemini(
+    video_path: str,
+    recipe_context: dict,
+    video_name: str,
+    video_duration: float,
+    api_key: str | None = None,
+    gemini_api_key: str | None = None,
+    on_progress: Any = None,
+) -> list[dict]:
+    """Detect cooking actions using Gemini direct video analysis (V7).
+    
+    Compresses the video, uploads to Gemini Files API, and analyzes in a single call.
+    
+    Args:
+        video_path: Path to source video file
+        recipe_context: Recipe info dict with dish_name and recipe_steps
+        video_name: Display name for the video
+        video_duration: Duration in seconds
+        api_key: Claude API key (unused, kept for interface compat)
+        gemini_api_key: Gemini API key
+        on_progress: Optional async callback(step: str, progress: float)
+    
+    Returns:
+        List of action dicts compatible with existing pipeline
+    """
+    g_key = gemini_api_key or settings.gemini_api_key
+    if not g_key:
+        raise ValueError("GEMINI_API_KEY not configured. Set it in .env")
+    
+    model = settings.gemini_model
+    
+    # Step 1: Compress video
+    if on_progress:
+        await on_progress("Compressing video for analysis...", 0.1)
+    
+    compressed_dir = os.path.join(os.path.dirname(video_path), ".gemini_temp")
+    os.makedirs(compressed_dir, exist_ok=True)
+    compressed_path = os.path.join(compressed_dir, f"{os.path.splitext(video_name)[0]}_compressed.mp4")
+    
+    await compress_video_for_gemini(
+        video_path, compressed_path,
+        resolution=settings.gemini_compress_resolution,
+        fps=settings.gemini_compress_fps,
+        crf=settings.gemini_compress_crf,
+    )
+    
+    # Step 2: Upload to Gemini
+    if on_progress:
+        await on_progress("Uploading to Gemini...", 0.3)
+    
+    file_uri, file_name = await upload_to_gemini(compressed_path, g_key)
+    
+    try:
+        # Step 3: Analyze with Gemini
+        if on_progress:
+            await on_progress("Gemini analyzing video...", 0.5)
+        
+        steps_text = "\n".join(
+            f"  {i+1}. {s}" for i, s in enumerate(recipe_context.get("recipe_steps", []))
+        ) or "  (No recipe steps provided)"
+        
+        prompt = GEMINI_TIMELINE_PROMPT.format(
+            dish_name=recipe_context.get("dish_name", "Unknown"),
+            recipe_steps=steps_text,
+            video_name=video_name,
+            duration=video_duration,
+        )
+        
+        start = time.time()
+        status_code, result, _ = await asyncio.to_thread(
+            _gemini_api_request,
+            f"{GEMINI_BASE_URL}/v1beta/models/{model}:generateContent?key={g_key}",
+            data={
+                "contents": [{
+                    "parts": [
+                        {"file_data": {"mime_type": "video/mp4", "file_uri": file_uri}},
+                        {"text": prompt},
+                    ]
+                }],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 8192,
+                    "responseMimeType": "application/json",
+                },
+            },
+        )
+        
+        analysis_time = time.time() - start
+        
+        if "candidates" not in result:
+            error_msg = json.dumps(result)[:500]
+            raise RuntimeError(f"Gemini API error: {error_msg}")
+        
+        # Parse response
+        response_text = result["candidates"][0]["content"]["parts"][0]["text"]
+        usage = result.get("usageMetadata", {})
+        
+        logger.info(
+            "Gemini video analysis complete: %.1fs, %d prompt tokens, %d output tokens, %d thinking tokens",
+            analysis_time,
+            usage.get("promptTokenCount", 0),
+            usage.get("candidatesTokenCount", 0),
+            usage.get("thoughtsTokenCount", 0),
+        )
+        
+        # Parse JSON
+        try:
+            parsed = json.loads(response_text)
+        except json.JSONDecodeError:
+            # Try to extract JSON from response
+            import re
+            cleaned = re.sub(r'```json\s*', '', response_text)
+            cleaned = re.sub(r'```\s*', '', cleaned).strip()
+            start_idx = cleaned.find('{')
+            if start_idx == -1:
+                raise RuntimeError(f"Failed to parse Gemini response: {response_text[:300]}")
+            depth = 0
+            for i in range(start_idx, len(cleaned)):
+                if cleaned[i] == '{': depth += 1
+                elif cleaned[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            parsed = json.loads(cleaned[start_idx:i+1])
+                            break
+                        except json.JSONDecodeError:
+                            continue
+            else:
+                raise RuntimeError(f"Failed to parse Gemini response JSON: {response_text[:300]}")
+        
+        actions = parsed.get("actions", [])
+        
+        # Normalize action format for pipeline compatibility
+        for action in actions:
+            action["source_video"] = video_name
+            # Ensure required fields
+            action.setdefault("shows_action_moment", True)
+            action.setdefault("visual_quality", 5)
+            action.setdefault("key_frame_timestamp", action.get("start_time", 0))
+            action.setdefault("recipe_step", None)
+            action.setdefault("action_type", "cooking")
+            
+            # Fix zero-duration actions
+            if action.get("end_time", 0) <= action.get("start_time", 0):
+                mid = action.get("start_time", 0)
+                action["start_time"] = max(0, mid - 1.0)
+                action["end_time"] = mid + 1.0
+        
+        if on_progress:
+            await on_progress(f"Detected {len(actions)} actions", 0.9)
+        
+        logger.info("Gemini detected %d actions in %s (%.1fs video, %.1fs analysis)",
+                     len(actions), video_name, video_duration, analysis_time)
+        
+        return actions
+    
+    finally:
+        # Cleanup: delete from Gemini and local compressed file
+        await cleanup_gemini_file(file_name, g_key)
+        try:
+            os.remove(compressed_path)
+            # Remove temp dir if empty
+            if not os.listdir(compressed_dir):
+                os.rmdir(compressed_dir)
+        except Exception:
+            pass
+
+
+# --------------------------------------------------------------------------- #
+# Phase 1: Action Timeline Detection (Legacy Claude Vision - V3)
 # --------------------------------------------------------------------------- #
 
 TIMELINE_SYSTEM = """You are an expert cooking video analyst. You analyze sequences of consecutive video frames

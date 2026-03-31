@@ -13,6 +13,7 @@ import asyncio
 import logging
 import os
 import re
+import subprocess
 import uuid
 from typing import Any
 
@@ -20,8 +21,11 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import settings
 from app.models.project import ProjectStatus
-from app.services.video_processor import extract_dense_frames, DenseFrameResult
-from app.services.video_analyzer import detect_actions_for_video, create_edit_plan, _resolve_api_key
+from app.services.video_processor import extract_dense_frames, DenseFrameResult, get_video_duration
+from app.services.video_analyzer import (
+    detect_actions_for_video, detect_actions_gemini,
+    create_edit_plan, _resolve_api_key,
+)
 from app.services.video_stitcher import stitch_clips_v2
 from app.services.proxy_renderer import pre_render_proxy_clips, fast_concat_proxies
 from app.services.thumbnail import get_best_thumbnail_path
@@ -88,58 +92,9 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
         return
 
     try:
-        # ------------------------------------------------------------------ #
-        # Step 1: Dense frame extraction
-        # ------------------------------------------------------------------ #
-        await _update_project(db, project_id, ProjectStatus.PROCESSING, 5,
-                              "Extracting frames from videos...")
-
         clips = await db.video_clips.find({"project_id": project_id}).to_list(None)
         if not clips:
             raise ValueError("No video clips uploaded for this project")
-
-        all_frame_results: list[DenseFrameResult] = []
-        video_path_map: dict[str, str] = {}  # filename -> full path
-
-        for ci, clip in enumerate(clips):
-            video_path = clip["original_path"]
-            if not os.path.exists(video_path):
-                logger.warning("Video file missing: %s", video_path)
-                continue
-
-            frame_dir = os.path.join(settings.upload_dir, project_id, "frames")
-
-            result = await asyncio.to_thread(
-                extract_dense_frames,
-                video_path, frame_dir,
-                frame_interval=0.5,  # 2fps for SSIM scene selection
-                video_index=ci,
-            )
-            all_frame_results.append(result)
-            
-            video_name = os.path.basename(video_path)
-            video_path_map[video_name] = video_path
-
-            await db.video_clips.update_one(
-                {"_id": clip["_id"]},
-                {"$set": {"duration": result.total_duration}},
-            )
-
-            progress = 5 + (15 * (ci + 1) / len(clips))
-            await _update_project(db, project_id, ProjectStatus.PROCESSING, progress,
-                                  f"Extracting frames: {ci+1}/{len(clips)} videos done "
-                                  f"({sum(len(r.frame_paths) for r in all_frame_results)} frames)")
-
-        total_frames = sum(len(r.frame_paths) for r in all_frame_results)
-        total_duration = sum(r.total_duration for r in all_frame_results)
-        logger.info("Total: %d frames from %d videos (%.1fs footage)",
-                     total_frames, len(all_frame_results), total_duration)
-
-        # ------------------------------------------------------------------ #
-        # Step 2: Phase 1 — Action Timeline Detection
-        # ------------------------------------------------------------------ #
-        await _update_project(db, project_id, ProjectStatus.ANALYZING, 25,
-                              f"Detecting actions in {total_frames} frames...")
 
         recipe_context = _build_recipe_context(project)
         logger.info("Recipe: %s, %d steps", recipe_context["dish_name"],
@@ -150,68 +105,239 @@ async def run_pipeline(db: AsyncIOMotorDatabase, project_id: str) -> None:
 
         all_actions: list[dict] = []
         video_sources: list[dict] = []
+        video_path_map: dict[str, str] = {}  # filename -> full path
+        all_frame_results: list[DenseFrameResult] = []  # Used for thumbnails later
 
-        # Calculate total batches across all videos for accurate progress
-        total_batches = sum(
-            max(1, (len(fr.frame_paths) + 14) // 15) for fr in all_frame_results
-        )
-        batches_done = 0
-        _progress_lock = asyncio.Lock()
+        use_gemini = settings.use_gemini_detection and settings.gemini_api_key
 
-        # Global semaphore: cap total concurrent API calls across ALL videos
-        _global_api_semaphore = asyncio.Semaphore(7)
+        if use_gemini:
+            # ============================================================== #
+            # V7 PATH: Gemini Direct Video Analysis
+            # ============================================================== #
+            logger.info("Using Gemini V7 pipeline for action detection")
 
-        # Process ALL videos in parallel (shared semaphore caps total concurrency)
-        async def _detect_video(ci: int, frame_result: DenseFrameResult) -> tuple[int, list[dict], dict]:
-            video_name = os.path.basename(frame_result.video_path)
+            await _update_project(db, project_id, ProjectStatus.PROCESSING, 5,
+                                  "Preparing videos for AI analysis...")
 
-            async def _on_batch(batch_num: int, n_batches: int, n_actions: int,
-                                _ci=ci, _total=total_batches) -> None:
-                nonlocal batches_done
-                async with _progress_lock:
-                    batches_done += 1
-                    progress = 25 + (35 * batches_done / _total)
+            # Get video info and build path map
+            video_infos: list[tuple[int, str, str, float]] = []  # (index, name, path, duration)
+            for ci, clip in enumerate(clips):
+                video_path = clip["original_path"]
+                if not os.path.exists(video_path):
+                    logger.warning("Video file missing: %s", video_path)
+                    continue
+                video_name = os.path.basename(video_path)
+                video_path_map[video_name] = video_path
+                duration = await asyncio.to_thread(get_video_duration, video_path)
+                video_infos.append((ci, video_name, video_path, duration))
+
+                await db.video_clips.update_one(
+                    {"_id": clip["_id"]},
+                    {"$set": {"duration": duration}},
+                )
+
+            total_duration = sum(d for _, _, _, d in video_infos)
+            total_videos = len(video_infos)
+
+            await _update_project(db, project_id, ProjectStatus.ANALYZING, 10,
+                                  f"Analyzing {total_videos} videos ({total_duration:.0f}s) with Gemini...")
+
+            # Analyze each video with Gemini (concurrent)
+            async def _detect_video_gemini(ci: int, vname: str, vpath: str, vdur: float):
+                async def _on_progress(step: str, prog: float):
+                    overall = 10 + (50 * (ci + prog) / total_videos)
                     await _update_project(
-                        db, project_id, ProjectStatus.ANALYZING, progress,
-                        f"Detecting actions: batch {batches_done}/{_total}")
+                        db, project_id, ProjectStatus.ANALYZING, overall,
+                        f"Video {ci+1}/{total_videos}: {step}")
 
-            actions = await detect_actions_for_video(
-                frame_paths=frame_result.frame_paths,
-                frame_timestamps=frame_result.frame_timestamps,
-                recipe_context=recipe_context,
-                video_name=video_name,
-                batch_size=15,
-                on_batch_done=_on_batch,
-                max_concurrent=7,
-                shared_semaphore=_global_api_semaphore,
-                api_key=pipeline_api_key,
+                actions = await detect_actions_gemini(
+                    video_path=vpath,
+                    recipe_context=recipe_context,
+                    video_name=vname,
+                    video_duration=vdur,
+                    gemini_api_key=settings.gemini_api_key,
+                    on_progress=_on_progress,
+                )
+
+                source_info = {
+                    "name": vname,
+                    "path": vpath,
+                    "duration": vdur,
+                    "n_actions": len(actions),
+                }
+                return ci, actions, source_info
+
+            video_results = await asyncio.gather(*[
+                _detect_video_gemini(ci, vn, vp, vd)
+                for ci, vn, vp, vd in video_infos
+            ])
+
+            # Merge results in order
+            video_results_sorted = sorted(video_results, key=lambda x: x[0])
+            for ci, actions, source_info in video_results_sorted:
+                offset = len(all_actions)
+                for a in actions:
+                    a["action_id"] = a["action_id"] + offset
+                    a["video_index"] = ci
+                all_actions.extend(actions)
+                video_sources.append(source_info)
+
+            await _update_project(db, project_id, ProjectStatus.ANALYZING, 60,
+                                  f"Detected {len(all_actions)} actions across {total_videos} videos (Gemini V7)")
+
+            # Extract frames at action keyframe timestamps for thumbnails
+            await _update_project(db, project_id, ProjectStatus.ANALYZING, 62,
+                                  "Extracting keyframes for thumbnails...")
+
+            for ci, vname, vpath, vdur in video_infos:
+                frame_dir = os.path.join(settings.upload_dir, project_id, "frames")
+                os.makedirs(frame_dir, exist_ok=True)
+
+                # Get keyframe timestamps for this video
+                video_actions = [a for a in all_actions if a.get("source_video") == vname]
+                keyframe_timestamps = []
+                for a in video_actions:
+                    kf_ts = a.get("key_frame_timestamp")
+                    if kf_ts is not None:
+                        keyframe_timestamps.append(kf_ts)
+                    else:
+                        # Use midpoint of action
+                        mid = (a.get("start_time", 0) + a.get("end_time", 0)) / 2
+                        keyframe_timestamps.append(mid)
+
+                if not keyframe_timestamps:
+                    continue
+
+                # Extract specific frames using ffmpeg
+                frame_paths = []
+                frame_ts_list = []
+                for fi, ts in enumerate(sorted(set(keyframe_timestamps))):
+                    out_path = os.path.join(frame_dir, f"v{ci:02d}_kf_{fi:04d}.jpg")
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-ss", str(ts),
+                        "-i", vpath,
+                        "-vframes", "1",
+                        "-vf", "scale='if(gt(iw,ih),768,-2)':'if(gt(iw,ih),-2,768)':flags=fast_bilinear",
+                        "-q:v", "4",
+                        out_path,
+                    ]
+                    result = await asyncio.to_thread(
+                        subprocess.run, cmd, capture_output=True, text=True, timeout=30
+                    )
+                    if result.returncode == 0 and os.path.exists(out_path):
+                        frame_paths.append(out_path)
+                        frame_ts_list.append(ts)
+
+                # Build a DenseFrameResult for thumbnail compatibility
+                all_frame_results.append(DenseFrameResult(
+                    video_path=vpath,
+                    total_duration=vdur,
+                    frame_paths=frame_paths,
+                    frame_timestamps=frame_ts_list,
+                    total_extracted=len(frame_paths),
+                    total_filtered=len(frame_paths),
+                ))
+
+        else:
+            # ============================================================== #
+            # V3 PATH: Legacy Claude Frame-by-Frame (fallback)
+            # ============================================================== #
+            logger.info("Using legacy V3 pipeline (Claude frame-by-frame)")
+
+            await _update_project(db, project_id, ProjectStatus.PROCESSING, 5,
+                                  "Extracting frames from videos...")
+
+            for ci, clip in enumerate(clips):
+                video_path = clip["original_path"]
+                if not os.path.exists(video_path):
+                    logger.warning("Video file missing: %s", video_path)
+                    continue
+
+                frame_dir = os.path.join(settings.upload_dir, project_id, "frames")
+
+                result = await asyncio.to_thread(
+                    extract_dense_frames,
+                    video_path, frame_dir,
+                    frame_interval=0.5,
+                    video_index=ci,
+                )
+                all_frame_results.append(result)
+
+                video_name = os.path.basename(video_path)
+                video_path_map[video_name] = video_path
+
+                await db.video_clips.update_one(
+                    {"_id": clip["_id"]},
+                    {"$set": {"duration": result.total_duration}},
+                )
+
+                progress = 5 + (15 * (ci + 1) / len(clips))
+                await _update_project(db, project_id, ProjectStatus.PROCESSING, progress,
+                                      f"Extracting frames: {ci+1}/{len(clips)} videos done "
+                                      f"({sum(len(r.frame_paths) for r in all_frame_results)} frames)")
+
+            total_frames = sum(len(r.frame_paths) for r in all_frame_results)
+            total_duration = sum(r.total_duration for r in all_frame_results)
+
+            await _update_project(db, project_id, ProjectStatus.ANALYZING, 25,
+                                  f"Detecting actions in {total_frames} frames...")
+
+            total_batches = sum(
+                max(1, (len(fr.frame_paths) + 14) // 15) for fr in all_frame_results
             )
+            batches_done = 0
+            _progress_lock = asyncio.Lock()
+            _global_api_semaphore = asyncio.Semaphore(7)
 
-            source_info = {
-                "name": video_name,
-                "path": frame_result.video_path,
-                "duration": frame_result.total_duration,
-                "n_actions": len(actions),
-            }
-            return ci, actions, source_info
+            async def _detect_video(ci: int, frame_result: DenseFrameResult) -> tuple[int, list[dict], dict]:
+                video_name = os.path.basename(frame_result.video_path)
 
-        # Run all videos concurrently
-        video_results = await asyncio.gather(*[
-            _detect_video(ci, fr) for ci, fr in enumerate(all_frame_results)
-        ])
+                async def _on_batch(batch_num: int, n_batches: int, n_actions: int,
+                                    _ci=ci, _total=total_batches) -> None:
+                    nonlocal batches_done
+                    async with _progress_lock:
+                        batches_done += 1
+                        progress = 25 + (35 * batches_done / _total)
+                        await _update_project(
+                            db, project_id, ProjectStatus.ANALYZING, progress,
+                            f"Detecting actions: batch {batches_done}/{_total}")
 
-        # Merge results in original order, assign global action IDs
-        video_results_sorted = sorted(video_results, key=lambda x: x[0])
-        for ci, actions, source_info in video_results_sorted:
-            offset = len(all_actions)
-            for a in actions:
-                a["action_id"] = a["action_id"] + offset
-                a["video_index"] = ci
-            all_actions.extend(actions)
-            video_sources.append(source_info)
+                actions = await detect_actions_for_video(
+                    frame_paths=frame_result.frame_paths,
+                    frame_timestamps=frame_result.frame_timestamps,
+                    recipe_context=recipe_context,
+                    video_name=video_name,
+                    batch_size=15,
+                    on_batch_done=_on_batch,
+                    max_concurrent=7,
+                    shared_semaphore=_global_api_semaphore,
+                    api_key=pipeline_api_key,
+                )
 
-        await _update_project(db, project_id, ProjectStatus.ANALYZING, 60,
-                              f"Detected {len(all_actions)} actions across {len(all_frame_results)} videos")
+                source_info = {
+                    "name": video_name,
+                    "path": frame_result.video_path,
+                    "duration": frame_result.total_duration,
+                    "n_actions": len(actions),
+                }
+                return ci, actions, source_info
+
+            video_results = await asyncio.gather(*[
+                _detect_video(ci, fr) for ci, fr in enumerate(all_frame_results)
+            ])
+
+            video_results_sorted = sorted(video_results, key=lambda x: x[0])
+            for ci, actions, source_info in video_results_sorted:
+                offset = len(all_actions)
+                for a in actions:
+                    a["action_id"] = a["action_id"] + offset
+                    a["video_index"] = ci
+                all_actions.extend(actions)
+                video_sources.append(source_info)
+
+            await _update_project(db, project_id, ProjectStatus.ANALYZING, 60,
+                                  f"Detected {len(all_actions)} actions across {len(all_frame_results)} videos")
 
         logger.info("Total actions detected: %d across %d videos",
                      len(all_actions), len(video_sources))

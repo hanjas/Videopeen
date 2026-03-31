@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     dedup_merge_gap: float = 0.3           # <0.3s gap = fragment (was 1.0s)
     ssim_filtering_enabled: bool = False   # SSIM scene selection to reduce frames
 
+    # Gemini direct video analysis (V7)
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    use_gemini_detection: bool = True      # Use Gemini for action detection instead of Claude frame-by-frame
+    gemini_compress_resolution: int = 720  # Target resolution for video compression
+    gemini_compress_fps: int = 30          # Target FPS for compression
+    gemini_compress_crf: int = 28          # CRF quality (higher = smaller file)
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     def ensure_dirs(self) -> None:
